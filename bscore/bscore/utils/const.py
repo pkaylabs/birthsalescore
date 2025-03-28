@@ -1,5 +1,6 @@
 from enum import Enum
 
+
 class UserType(Enum):
     '''User types for the application'''
     CUSTOMER = 'CUSTOMER'

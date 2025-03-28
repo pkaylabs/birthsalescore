@@ -6,13 +6,14 @@ and their otp information.
 
 '''
 
+import random
+import string
 from datetime import timedelta, timezone
+
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
 from django.db import models
-import string
-import random
-from bscore.utils.const import ConstList, UserType
 
+from bscore.utils.const import ConstList, UserType
 
 from .manager import AccountManager
 
