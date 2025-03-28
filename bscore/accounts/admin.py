@@ -10,6 +10,11 @@ class UserAdmin(admin.ModelAdmin):
     list_display = ('name', 'email', 'phone', 'user_type','is_staff', 'is_superuser')
     search_fields = ('name', 'email', 'phone',)
 
+@admin.register(Wallet)
+class WalletAdmin(admin.ModelAdmin):
+    list_display = ('wallet_id', 'vendor', 'balance', 'created_at', 'updated_at')
+    search_fields = ('wallet_id', )
+
 # otp
 @admin.register(OTP)
 class OTPAdmin(admin.ModelAdmin):
