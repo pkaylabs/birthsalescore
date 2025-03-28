@@ -33,6 +33,9 @@ INSTALLED_APPS = [
     'knox',
     'drf_spectacular',
 
+    # internal apps
+    'accounts.apps.AccountsConfig',
+
 ]
 
 MIDDLEWARE = [
@@ -95,6 +98,9 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
+
+# custom user model
+AUTH_USER_MODEL = 'accounts.User'
 
 # Internationalization
 # https://docs.djangoproject.com/en/5.1/topics/i18n/
