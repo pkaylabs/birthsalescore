@@ -2,7 +2,7 @@ from django.contrib import admin
 
 from .models import *
 
-admin.site.site_header = 'BIRTHSALES PORTAL'
+admin.site.site_header = 'BIRTHSALES ADMIN PORTAL'
 
 # user
 @admin.register(User)

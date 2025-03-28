@@ -88,8 +88,8 @@ class Vendor(models.Model):
 
     def send_welcome_sms(self) -> None:
         '''Send a welcome notification to the vendor'''
-        msg = f'Welcome to the Birthnon Multi-vendor eCommerce Platform!\nYour Vendor Account ({self.vendor_name}) has been created,\nBirthnon Team'
-        # send_sms(msg, [self.phone])
+        msg = f'Welcome to the Birthnon Multi-vendor eCommerce Platform!\nYour Vendor Account ({self.vendor_name}) has been created successfully.\n\nRegards.\nThe Birthnon Team'
+        send_sms(msg, [self.vendor_phone])
         print(msg)
 
     def create_wallet(self) -> None:
@@ -187,7 +187,7 @@ class OTP(models.Model):
     
     def send_otp(self) -> None:
         '''Send the OTP to the user'''
-        msg = f'Welcome to the Destination Experience App.\nYour OTP is {self.otp}\n\nRegards,\nDXP Team'
+        msg = f'Welcome to Birthnon.\nYour OTP is {self.otp}\n\nRegards,\nThe Birthnon Team!'
         send_sms(msg, [self.phone])
         print(msg)
 
