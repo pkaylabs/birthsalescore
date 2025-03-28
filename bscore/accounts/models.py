@@ -14,6 +14,7 @@ from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
 from django.db import models
 
 from bscore.utils.const import ConstList, UserType
+from bscore.utils.services import send_sms
 
 from .manager import AccountManager
 
@@ -85,6 +86,22 @@ class Vendor(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    def send_welcome_sms(self) -> None:
+        '''Send a welcome notification to the vendor'''
+        msg = f'Welcome to the Birthnon Multi-vendor eCommerce Platform!\nYour Vendor Account ({self.vendor_name}) has been created,\nBirthnon Team'
+        # send_sms(msg, [self.phone])
+        print(msg)
+
+    def create_wallet(self) -> None:
+        '''Create a wallet for the vendor'''
+        wallet = Wallet.objects.filter(vendor=self).first()
+        if not wallet:
+            wallet = Wallet.objects.create(vendor=self)
+            wallet.save()
+        else:
+            return
+        return 
+
     def __str__(self):
         return self.vendor_name + ' - ' + self.user.name if self.user else self.vendor_id
     
@@ -154,7 +171,7 @@ class Wallet(models.Model):
             return False
 
     def __str__(self):
-        return self.user.name + ' - ' + self.vendor.vendor_name + ' - ' + str(self.balance)
+        return self.wallet_id + ' - ' + self.vendor.vendor_name + ' - ' + str(self.balance)
 
 
 class OTP(models.Model):
@@ -168,11 +185,11 @@ class OTP(models.Model):
         '''Returns True if the OTP is expired'''
         return (self.created_at + timedelta(minutes=30)) < timezone.now()
     
-    def send_otp_to_user(self) -> None:
+    def send_otp(self) -> None:
         '''Send the OTP to the user'''
         msg = f'Welcome to the Destination Experience App.\nYour OTP is {self.otp}\n\nRegards,\nDXP Team'
-        # send_mail([self.phone], 'OTP', msg)
+        send_sms(msg, [self.phone])
         print(msg)
 
     def __str__(self):
-        return self.phone + ' - ' + self.otp
+        return self.phone + ' - ' + str(self.otp)
