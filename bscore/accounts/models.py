@@ -124,6 +124,14 @@ class Subscription(models.Model):
 
 class Wallet(models.Model):
     '''Wallet model for the application'''
+    def generate_wallet_id():
+        '''Generate a unique wallet id'''
+        '''The wallet id is a random string of 8 characters'''
+        pref = 'BNWL-'
+        wallet_id = ''.join(random.choice(string.digits) for _ in range(8))
+        return pref + wallet_id
+
+    wallet_id = models.CharField(max_length=50, unique=True, default=generate_wallet_id)
     vendor = models.ForeignKey(Vendor, on_delete=models.CASCADE)
     balance = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
 
