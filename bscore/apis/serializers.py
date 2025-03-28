@@ -48,7 +48,7 @@ class RegisterUserSerializer(serializers.ModelSerializer):
             email=validated_data.get('email'),
             password=validated_data.get('password'),
             name=validated_data.get('name'),
-            church_profile=validated_data.get('church_profile'),
+            address=validated_data.get('address'),
             user_type=validated_data.get('user_type'),
         )
         return user
