@@ -21,3 +21,9 @@ class OTPAdmin(admin.ModelAdmin):
     list_display = ('phone', 'otp', 'created_at', 'updated_at')
     search_fields = ('phone', 'otp',)
 
+# vendor
+@admin.register(Vendor)
+class VendorAdmin(admin.ModelAdmin):
+    list_display = ('vendor_id', 'vendor_name', 'vendor_phone', 'created_at', 'updated_at')
+    search_fields = ('vendor_id', 'vendor_name', 'vendor_phone',)
+
