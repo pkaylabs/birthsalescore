@@ -1,2 +1,2 @@
 from .main import *
-from .accounts import *
+from .auth import *

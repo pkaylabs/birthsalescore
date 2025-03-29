@@ -124,7 +124,6 @@ class Ad(models.Model):
     def __str__(self):
         return self.title
     
-
 class AdImage(models.Model):
     '''Model representing an Ad image'''
     ad = models.ForeignKey(Ad, on_delete=models.CASCADE, related_name='images')
@@ -134,7 +133,6 @@ class AdImage(models.Model):
 
     def __str__(self):
         return self.ad.title + " - " + str(self.id)
-    
 
 class Payment(models.Model):
     """
