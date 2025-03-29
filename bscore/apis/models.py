@@ -1,6 +1,7 @@
 from django.db import models
-
+import uuid
 from accounts.models import User, Vendor
+from bscore.utils.const import ConstList, PaymentMethod, PaymentStatus
 
 
 class ProductCategory(models.Model):
@@ -45,7 +46,6 @@ class ProductImages(models.Model):
     def __str__(self):
         return f"Image for {self.product.name}"
     
-
 class ProductReview(models.Model):
     """
     Model representing a product review.
@@ -123,3 +123,36 @@ class Ad(models.Model):
 
     def __str__(self):
         return self.title
+    
+
+class AdImage(models.Model):
+    '''Model representing an Ad image'''
+    ad = models.ForeignKey(Ad, on_delete=models.CASCADE, related_name='images')
+    image = models.ImageField(upload_to='ads/')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.ad.title + " - " + str(self.id)
+    
+
+class Payment(models.Model):
+    """
+    Model representing a payment.
+    """
+    def get_payment_id():
+        '''Generate a unique payment ID'''
+        return uuid.uuid4().hex[:14]
+    
+    payment_id = models.CharField(max_length=255, unique=True, default=get_payment_id, editable=False)
+    order = models.ForeignKey(Order, on_delete=models.PROTECT, related_name='payments')
+    user = models.ForeignKey(User, on_delete=models.PROTECT, related_name='payments')
+    vendor = models.ForeignKey(Vendor, on_delete=models.PROTECT, related_name='payments',  null=True)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    payment_method = models.CharField(max_length=10, choices=ConstList.PAYMENT_METHOD, default=PaymentMethod.MOMO.value)
+    status = models.CharField(max_length=10, choices=ConstList.PAYMENT_STATUS, default=PaymentStatus.PENDING.value)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Payment for Order {self.order.id}: GHC{self.amount}"
