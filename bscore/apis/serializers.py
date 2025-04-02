@@ -55,6 +55,8 @@ class RegisterUserSerializer(serializers.ModelSerializer):
         return user
 
 class VendorSerializer(serializers.ModelSerializer):
+    user_name = serializers.ReadOnlyField()
+    vendor_balance = serializers.ReadOnlyField()
     class Meta:
         model = Vendor
         fields = '__all__'
