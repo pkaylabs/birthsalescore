@@ -76,7 +76,7 @@ class VendorsAPIView(APIView):
 class SubscriptionAPIView(APIView):
     '''API Endpoints for Subscriptions'''
     permission_classes = (permissions.IsAuthenticated,)
-    serializer_classes = SubscriptionSerializer
+    serializer_class = SubscriptionSerializer
 
     def get(self, request, *args, **kwargs):
         '''GET all subscriptions'''
@@ -88,15 +88,15 @@ class SubscriptionAPIView(APIView):
             subscriptions = Subscription.objects.filter(
                 vendor=vendor
             ).order_by('-created_at')
-        serializer = self.serializer_classes(subscriptions, many=True)
+        serializer = self.serializer_class(subscriptions, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
     
     def post(self, request, *args, **kwars):
         '''For vendors to subscribe to a subscription package'''
         user = request.user
-        serializer = self.serializer_classes(request.data)
         vendor = Vendor.objects.filter(user=user).first()
-        serializer.data['vendor'] = vendor
+        request.data['vendor'] = vendor.id
+        serializer = self.serializer_class(data=request.data)
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data, status=status.HTTP_200_OK)
@@ -107,11 +107,11 @@ class SubscriptionAPIView(APIView):
 class SubscriptionPackageAPIView(APIView):
     '''API Endpoints for Subscription Packages'''
     permission_classes = (permissions.IsAuthenticated,)
-    serializer_classes = SubscriptionPackageSerializer
+    serializer_class = SubscriptionPackageSerializer
 
     def get(self, request, *args, **kwargs):
         packages = SubscriptionPackage.objects.all()
-        serializer = self.serializer_classes(packages, many=True)
+        serializer = self.serializer_class(packages, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
     
     def post(self, request, *args, **kwargs):
@@ -119,7 +119,7 @@ class SubscriptionPackageAPIView(APIView):
         if not (user.is_superuser or user.is_staff or user.user_type == UserType.ADMIN.value):
             # only admin users can create subscription packages
             return Response({"message": "You are not authorised to create packages"}, status=status.HTTP_403_FORBIDDEN)
-        serializer = self.serializer_classes(data=request.data)
+        serializer = self.serializer_class(data=request.data)
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data, status=status.HTTP_200_OK)

@@ -6,6 +6,7 @@ and their otp information.
 
 '''
 
+import datetime
 import random
 import string
 from datetime import timedelta
@@ -134,9 +135,9 @@ class SubscriptionPackage(models.Model):
 
 class Subscription(models.Model):
     '''Subscription model for the application'''
-    vendor = models.ForeignKey(Vendor, on_delete=models.CASCADE)
+    vendor = models.ForeignKey(Vendor, on_delete=models.CASCADE, null=True, blank=True)
     package = models.ForeignKey(SubscriptionPackage, on_delete=models.CASCADE)
-    start_date = models.DateField(default=timezone.now)
+    start_date = models.DateField(default=datetime.date.today)
     end_date = models.DateField(null=True, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
