@@ -2,48 +2,56 @@ from rest_framework import status, permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.models import Subscription, SubscriptionPackage, Vendor, Wallet
+from accounts.models import Subscription, SubscriptionPackage, User, Vendor, Wallet
 from apis.models import Product
-from apis.serializers import ProductSerializer, SubscriptionPackageSerializer, SubscriptionSerializer, VendorSerializer, WalletSerializer
+from apis.serializers import ProductSerializer, SubscriptionPackageSerializer, SubscriptionSerializer, UserSerializer, VendorSerializer, WalletSerializer
 from bscore.utils.const import UserType
-from bscore.utils.permissions import IsSuperuser, IsAdminOnly, IsCustomerOnly, IsEliteVendorOnly
+from bscore.utils.permissions import IsSuperuserOnly, IsAdminOnly, IsCustomerOnly, IsEliteVendorOnly
 
 
 class UsersAPIView(APIView):
     '''API Endpoints for managing users'''
 
-    permission_classes = (IsSuperuser | IsAdminOnly,)
+    permission_classes = (IsSuperuserOnly | IsAdminOnly,)
 
     def get(self, request, *args, **kwargs):
-        '''Retrieve all vendors (Only admins can access)'''
-        vendors = Vendor.objects.all().order_by('-created_at')
-        serializer = VendorSerializer(vendors, many=True)
+        '''Retrieve all users (Only admins can access)'''
+        users = User.objects.all().order_by('-created_at')
+        serializer = UserSerializer(users, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def post(self, request, *args, **kwargs):
-        '''Register a new vendor (Only admins can create vendors)'''
-        serializer = VendorSerializer(data=request.data)
+        '''Register a new user (Only admins can create users)'''
+        serializer = UserSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save()
-            return Response({"message": "Vendor registered successfully", "vendor": serializer.data}, status=status.HTTP_201_CREATED)
+            return Response({"message": "User Created Successfully", "user": serializer.data}, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def delete(self, request, *args, **kwargs):
         '''Delete a vendor (Only superusers can delete vendors)'''
-        user = request.user
-        vendor_id = request.data.get('vendor_id')
-        vendor = Vendor.objects.filter(id=vendor_id).first()
+        # user = request.user
+        user_id = request.data.get('user_id')
+        user = User.objects.filter(id=user_id, deleted=False).first()
 
-        if not vendor:
-            return Response({"message": "Vendor not found"}, status=status.HTTP_404_NOT_FOUND)
+        if not user:
+            return Response({"message": "User not found"}, status=status.HTTP_404_NOT_FOUND)
         
-        vendor.delete()
+        if user.id == request.user.id:
+            return Response({"message": "You can't delete yourself"}, status=status.HTTP_404_NOT_FOUND)
+        
+        if user.is_superuser:
+            return Response({"message": "You can't delete a Superuser"}, status=status.HTTP_404_NOT_FOUND)
+        
+        user.deleted = True
+        user.save()
+        return Response({"message": "User Account Deleted"}, status=status.HTTP_200_OK)
 
 
 class VendorAPIView(APIView):
     '''API Endpoints for Vendors'''
 
-    permission_classes = (IsSuperuser | IsAdminOnly,)
+    permission_classes = (IsSuperuserOnly | IsAdminOnly,)
 
     def get(self, request, *args, **kwargs):
         '''Retrieve all vendors (Only admins can access)'''
