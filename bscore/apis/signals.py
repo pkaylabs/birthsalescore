@@ -39,3 +39,9 @@ def otp_and_welcome_vendor(sender, instance, created, **kwargs):
             vendor.create_wallet()
         return
     
+@receiver(post_save, sender=Vendor)
+def create_Vendor_wallet(sender, instance, created, **kwargs):
+    if created:
+        instance.create_wallet()
+
+    return
