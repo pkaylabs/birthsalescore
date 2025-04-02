@@ -87,6 +87,18 @@ class Vendor(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    @property
+    def vendor_balance(self):
+        wallet = Wallet.objects.filter(vendor=self).first()
+        if wallet:
+            return wallet.balance
+        else:
+            return 0.0
+
+    @property
+    def user_name(self):
+        return self.user.name
+
     def send_welcome_sms(self) -> None:
         '''Send a welcome notification to the vendor'''
         msg = f'Welcome to the Birthnon Multi-vendor eCommerce Platform!\nYour Vendor Account ({self.vendor_name}) has been created successfully.\n\nRegards.\nThe Birthnon Team'
