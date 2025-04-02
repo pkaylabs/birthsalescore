@@ -46,7 +46,6 @@ class LoginAPI(APIView):
             "token": AuthToken.objects.create(user)[1],
         })
 
-
 class VerifyOTPAPI(APIView):
     '''Verify OTP api endpoint'''
     permission_classes = (permissions.IsAuthenticated,)
@@ -81,7 +80,7 @@ class VerifyOTPAPI(APIView):
         return Response({'message': 'OTP verified successfully'}, status=status.HTTP_200_OK)
 
 class RegisterAPI(APIView):
-    '''Register api endpoint'''
+    '''Register api endpoint -- When a user signs up on their own'''
     permission_classes = (permissions.AllowAny,)
 
     def post(self, request, *args, **kwargs):
