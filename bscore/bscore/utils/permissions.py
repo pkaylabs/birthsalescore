@@ -3,11 +3,11 @@ from rest_framework.permissions import BasePermission
 from bscore.utils.const import UserType
 
 
-class IsSuperuser(BasePermission):
+class IsSuperuserOnly(BasePermission):
     """
     Allows access only to superusers.
     """
-    def has_permission(self, request):
+    def has_permission(self, request, view):
         return request.user.is_authenticated and request.user.is_superuser
 
 
