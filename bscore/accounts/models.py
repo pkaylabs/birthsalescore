@@ -8,7 +8,8 @@ and their otp information.
 
 import random
 import string
-from datetime import timedelta, timezone
+from datetime import timedelta
+from django.utils import timezone
 
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
 from django.db import models
@@ -187,7 +188,7 @@ class OTP(models.Model):
     
     def send_otp(self) -> None:
         '''Send the OTP to the user'''
-        msg = f'Welcome to Birthnon.\nYour OTP is {self.otp}\n\nRegards,\nThe Birthnon Team!'
+        msg = f'Welcome to Birthnon.\n\nYour OTP is {self.otp}\n\nRegards,\nThe Birthnon Team!'
         send_sms(msg, [self.phone])
         print(msg)
 
