@@ -76,11 +76,33 @@ class VendorsAPIView(APIView):
 class SubscriptionAPIView(APIView):
     '''API Endpoints for Subscriptions'''
     permission_classes = (permissions.IsAuthenticated,)
+    serializer_classes = SubscriptionSerializer
 
     def get(self, request, *args, **kwargs):
-        subscriptions = Subscription.objects.all().order_by('-created_at')
-        serializer = SubscriptionSerializer(subscriptions, many=True)
+        '''GET all subscriptions'''
+        user = request.user
+        if user.is_superuser or user.is_staff or user.user_type == UserType.ADMIN.value:
+            subscriptions = Subscription.objects.all().order_by('-created_at')
+        else:
+            vendor = Vendor.objects.filter(user=user).first()
+            subscriptions = Subscription.objects.filter(
+                vendor=vendor
+            ).order_by('-created_at')
+        serializer = self.serializer_classes(subscriptions, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    def post(self, request, *args, **kwars):
+        '''For vendors to subscribe to a subscription package'''
+        user = request.user
+        serializer = self.serializer_classes(request.data)
+        vendor = Vendor.objects.filter(user=user).first()
+        serializer.data['vendor'] = vendor
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
 
 class SubscriptionPackageAPIView(APIView):
     '''API Endpoints for Subscription Packages'''

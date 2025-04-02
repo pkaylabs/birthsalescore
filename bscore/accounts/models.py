@@ -136,11 +136,19 @@ class Subscription(models.Model):
     '''Subscription model for the application'''
     vendor = models.ForeignKey(Vendor, on_delete=models.CASCADE)
     package = models.ForeignKey(SubscriptionPackage, on_delete=models.CASCADE)
-    start_date = models.DateTimeField(auto_now_add=True)
-    end_date = models.DateTimeField()
+    start_date = models.DateField(default=timezone.now)
+    end_date = models.DateField(null=True, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    @property
+    def vendor_name(self):
+        return self.vendor.vendor_name
+    
+    @property
+    def package_name(self):
+        return self.package.package_name
 
     # set the end date to 30 days from the start date
     def save(self, *args, **kwargs):
@@ -149,7 +157,7 @@ class Subscription(models.Model):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return self.user.name + ' - ' + self.vendor.vendor_name + ' - ' + self.package.package_name
+        return self.vendor.user_name + ' - ' + self.vendor.vendor_name + ' - ' + self.package.package_name
 
 
 class Wallet(models.Model):
