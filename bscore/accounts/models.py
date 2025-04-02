@@ -144,6 +144,14 @@ class Subscription(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     @property
+    def expired(self):
+        if self.start_date is None and self.end_date is None:
+            return (self.created_at + timedelta(days=30)).date() < datetime.date.today()
+        if self.end_date is None:
+            return (self.start_date + timedelta(days=30)).today() < datetime.date.today()
+        return self.end_date < datetime.date.today()
+
+    @property
     def vendor_name(self):
         return self.vendor.vendor_name
     
