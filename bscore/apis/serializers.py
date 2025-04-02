@@ -79,6 +79,7 @@ class SubscriptionPackageSerializer(serializers.ModelSerializer):
 class SubscriptionSerializer(serializers.ModelSerializer):
     vendor_name = serializers.ReadOnlyField()
     package_name = serializers.ReadOnlyField()
+    expired = serializers.ReadOnlyField()
     class Meta:
         model = Subscription
         fields = '__all__'
