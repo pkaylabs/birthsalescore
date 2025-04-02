@@ -73,18 +73,6 @@ class VendorsAPIView(APIView):
             return Response({"message": "Vendor registered successfully", "vendor": serializer.data}, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    def delete(self, request, *args, **kwargs):
-        '''Delete a vendor (Only superusers can delete vendors)'''
-        user = request.user
-        vendor_id = request.data.get('vendor_id')
-        vendor = Vendor.objects.filter(id=vendor_id).first()
-
-        if not vendor:
-            return Response({"message": "Vendor not found"}, status=status.HTTP_404_NOT_FOUND)
-        
-        vendor.delete()
-        return Response({"message": "Vendor deleted successfully"}, status=status.HTTP_200_OK)
-    
 class SubscriptionAPIView(APIView):
     '''API Endpoints for Subscriptions'''
     permission_classes = (permissions.IsAuthenticated,)
@@ -97,11 +85,36 @@ class SubscriptionAPIView(APIView):
 class SubscriptionPackageAPIView(APIView):
     '''API Endpoints for Subscription Packages'''
     permission_classes = (permissions.IsAuthenticated,)
+    serializer_classes = SubscriptionPackageSerializer
 
     def get(self, request, *args, **kwargs):
         packages = SubscriptionPackage.objects.all()
-        serializer = SubscriptionPackageSerializer(packages, many=True)
+        serializer = self.serializer_classes(packages, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    def post(self, request, *args, **kwargs):
+        user = request.user
+        if not (user.is_superuser or user.is_staff or user.user_type == UserType.ADMIN.value):
+            # only admin users can create subscription packages
+            return Response({"message": "You are not authorised to create packages"}, status=status.HTTP_403_FORBIDDEN)
+        serializer = self.serializer_classes(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    def delete(self, request, *args, **kwargs):
+        user = request.user
+        if not (user.is_superuser or user.is_staff or user.user_type == UserType.ADMIN.value):
+            # only admin users can create subscription packages
+            return Response({"message": "You are not authorised to delete packages"}, status=status.HTTP_403_FORBIDDEN)
+        package_id = request.data.get('package')
+        package = SubscriptionPackage.objects.filter(id=package_id).first()
+        if package:
+            package.delete()
+            return Response({"message": "Package Deleted Successfully"}, status=status.HTTP_200_OK)
+        return Response({"message": "Package not found"}, status=status.HTTP_404_NOT_FOUND)
+
     
 class WalletAPIView(APIView):
     '''API Endpoints for Wallets'''
