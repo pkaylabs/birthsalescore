@@ -15,5 +15,5 @@ urlpatterns += [
     path('changepassword/', views.ChangePasswordAPIView.as_view(), name='change_password'), 
     path('resetpassword/', views.ResetPasswordAPIView.as_view(), name='reset_password'),
     path('users/', views.UsersAPIView.as_view(), name='users'),
-
+    path('vendors/', views.VendorsAPIView.as_view(), name='vendors'),
 ]
