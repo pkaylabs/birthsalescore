@@ -48,7 +48,7 @@ class UsersAPIView(APIView):
         return Response({"message": "User Account Deleted"}, status=status.HTTP_200_OK)
 
 
-class VendorAPIView(APIView):
+class VendorsAPIView(APIView):
     '''API Endpoints for Vendors'''
 
     permission_classes = (IsSuperuserOnly | IsAdminOnly,)
@@ -63,7 +63,13 @@ class VendorAPIView(APIView):
         '''Register a new vendor (Only admins can create vendors)'''
         serializer = VendorSerializer(data=request.data)
         if serializer.is_valid():
+            user_id = request.data.get('user')
+            user = User.objects.filter(id=user_id).first()
+            if not user:
+                return Response({"message": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+            user.user_type = UserType.CUSTOMER.value
             serializer.save()
+            user.save()
             return Response({"message": "Vendor registered successfully", "vendor": serializer.data}, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
