@@ -129,3 +129,26 @@ class PaymentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Payment
         fields = '__all__'
+
+class ChangePasswordSerializer(serializers.Serializer):
+    '''Serializer for changing password'''
+    old_password = serializers.CharField()
+    new_password = serializers.CharField()
+    confirm_password = serializers.CharField()
+
+    def validate(self, data):
+        if data.get('new_password') != data.get('confirm_password'):
+            raise serializers.ValidationError("Passwords do not match")
+        return data
+    
+
+class ResetPasswordSerializer(serializers.Serializer):
+    '''Serializer for resetting password'''
+    phone = serializers.CharField()
+    new_password = serializers.CharField()
+    confirm_password = serializers.CharField()
+
+    def validate(self, data):
+        if not User.objects.filter(phone=data.get('phone')).exists():
+            raise serializers.ValidationError("Phone does not exist")
+        return data

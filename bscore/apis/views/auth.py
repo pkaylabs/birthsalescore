@@ -6,7 +6,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.models import OTP, User
-from apis.serializers import (LoginSerializer, RegisterUserSerializer,
+from apis.serializers import (ChangePasswordSerializer, LoginSerializer, RegisterUserSerializer, ResetPasswordSerializer,
                               UserSerializer)
 from bscore.utils.const import UserType
 
@@ -116,3 +116,71 @@ class LogoutAPI(APIView):
         AuthToken.objects.filter(user=user).delete()
         return Response({"status": "success"}, status=status.HTTP_200_OK)
     
+
+class UserProfileAPIView(APIView):
+    '''API endpoint to get and update user profile'''
+
+    permission_classes = (permissions.IsAuthenticated,)
+    serializer_class = UserSerializer
+
+    def get(self, request, *args, **kwargs):
+        '''Get user profile'''
+        user = request.user
+        serializer = self.serializer_class(user)
+
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def put(self, request, *args, **kwargs):
+        '''Update user profile'''
+        user = request.user
+        serializer = self.serializer_class(user, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+
+class ChangePasswordAPIView(APIView):
+    '''API endpoint to change user password'''
+
+    permission_classes = (permissions.IsAuthenticated,)
+    serializer_class = ChangePasswordSerializer
+
+    def post(self, request, *args, **kwargs):
+        '''Change user password'''
+        user = request.user
+        serializer = self.serializer_class(data=request.data)
+        if serializer.is_valid():
+            if not user.check_password(serializer.data.get('old_password')):
+                return Response({'old_password': 'Wrong password.'}, status=status.HTTP_400_BAD_REQUEST)
+            user.set_password(serializer.data.get('new_password'))
+            user.save()
+            return Response({'status': 'success'}, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+
+class ResetPasswordAPIView(APIView):
+    '''API endpoint to reset user password'''
+
+    permission_classes = (permissions.AllowAny,)
+    serializer_class = ResetPasswordSerializer
+
+    def post(self, request, *args, **kwargs):
+        '''Reset user password'''
+        serializer = self.serializer_class(data=request.data)
+        if serializer.is_valid():
+            phone = serializer.data.get('phone')
+            user = User.objects.filter(phone=phone).first()
+            if not user:
+                return Response({'phone': 'User not found.'}, status=status.HTTP_400_BAD_REQUEST)
+            if not user.phone_verified:
+                return Response({'phone': 'Phone not verified.'}, status=status.HTTP_400_BAD_REQUEST)
+            if len(serializer.data.get('new_password')) < 1:
+                return Response({'new_password': 'Password is too short.'}, status=status.HTTP_400_BAD_REQUEST)
+            if not serializer.data.get('new_password') == serializer.data.get('confirm_password'):
+                return Response({'new_password': 'Passwords do not match.'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            user.set_password(serializer.data.get('new_password'))
+            user.save()
+            return Response({'status': 'success'}, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

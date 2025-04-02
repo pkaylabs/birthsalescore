@@ -9,6 +9,37 @@ from bscore.utils.const import UserType
 from bscore.utils.permissions import IsSuperuser, IsAdminOnly, IsCustomerOnly, IsEliteVendorOnly
 
 
+class UsersAPIView(APIView):
+    '''API Endpoints for managing users'''
+
+    permission_classes = (IsSuperuser | IsAdminOnly,)
+
+    def get(self, request, *args, **kwargs):
+        '''Retrieve all vendors (Only admins can access)'''
+        vendors = Vendor.objects.all().order_by('-created_at')
+        serializer = VendorSerializer(vendors, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request, *args, **kwargs):
+        '''Register a new vendor (Only admins can create vendors)'''
+        serializer = VendorSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({"message": "Vendor registered successfully", "vendor": serializer.data}, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request, *args, **kwargs):
+        '''Delete a vendor (Only superusers can delete vendors)'''
+        user = request.user
+        vendor_id = request.data.get('vendor_id')
+        vendor = Vendor.objects.filter(id=vendor_id).first()
+
+        if not vendor:
+            return Response({"message": "Vendor not found"}, status=status.HTTP_404_NOT_FOUND)
+        
+        vendor.delete()
+
+
 class VendorAPIView(APIView):
     '''API Endpoints for Vendors'''
 
