@@ -104,7 +104,10 @@ class Service(models.Model):
 
     def __str__(self):
         return self.name
-    
+
+
+#NOTE: ADD BANNER MODEL
+
 
 class Ad(models.Model):
     '''Model representing an Ad'''
