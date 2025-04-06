@@ -116,6 +116,7 @@ class OrderSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class ServiceSerializer(serializers.ModelSerializer):
+    vendor = VendorSerializer(read_only=True)
     class Meta:
         model = Service
         fields = '__all__'
