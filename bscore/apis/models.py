@@ -106,7 +106,19 @@ class Service(models.Model):
         return self.name
 
 
-#NOTE: ADD BANNER MODEL
+class Banner(models.Model):
+    """
+    Model representing a banner.
+    """
+    title = models.CharField(max_length=255)
+    image = models.ImageField(upload_to='banners/')
+    link = models.URLField(blank=True, null=True)
+    is_active = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.title
 
 
 class Ad(models.Model):
