@@ -43,7 +43,7 @@ class HomepageAPIView(APIView):
             "banners": BannerSerializer(banners, many=True).data,
             "categories": ProductCategorySerializer(categories, many=True).data, 
             "products": ProductSerializer(products, many=True).data, 
-            "best_selling_products": ProductSerializer(products, many=True).data, 
+            "best_selling_products": ProductSerializer(best_selling_products, many=True).data, 
             "new_arrivals": ProductSerializer(new_arrivals, many=True).data, 
         }
         return Response(response_data, status=status.HTTP_200_OK)
