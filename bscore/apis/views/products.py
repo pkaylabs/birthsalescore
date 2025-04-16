@@ -1,11 +1,12 @@
-from rest_framework import status, permissions
+from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apis.models import Order, Product, ProductCategory
-from apis.serializers import OrderSerializer, ProductCategorySerializer, ProductSerializer
+from apis.serializers import (OrderSerializer, ProductCategorySerializer,
+                              ProductSerializer)
 from bscore.utils.const import UserType
-from bscore.utils.permissions import IsSuperuser, IsAdminOnly, IsCustomerOnly, IsEliteVendorOnly
+
 
 class ProductAPIView(APIView):
     '''API Endpoints for Products'''
