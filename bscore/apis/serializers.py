@@ -126,6 +126,11 @@ class AdSerializer(serializers.ModelSerializer):
         model = Ad
         fields = '__all__'
 
+class BannerSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Banner
+        fields = '__all__'
+
 class AdImageSerializer(serializers.ModelSerializer):
     class Meta:
         model = AdImage

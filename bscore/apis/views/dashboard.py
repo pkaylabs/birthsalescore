@@ -46,7 +46,6 @@ class DashboardAPIView(APIView):
                 created_at__lt=end_of_day
             )])
 
-
         data = {
                 "products": products,
                 "balance": balance,
@@ -55,7 +54,8 @@ class DashboardAPIView(APIView):
                 "latest_transactions": payments,
                 "sales_today": sales_today
             }
-
+        
+        return Response(data, status=status.HTTP_200_OK)
 
 
 
