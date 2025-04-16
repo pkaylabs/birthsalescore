@@ -1,4 +1,5 @@
 from django.urls import path
+
 import apis.views as views
 
 app_name = 'apis'
