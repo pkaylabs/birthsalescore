@@ -1,10 +1,12 @@
 from django.contrib.auth.models import BaseUserManager
 
+from bscore.utils.const import UserType
+
 
 class AccountManager(BaseUserManager):
     '''Manages User account creation'''
 
-    def create_user(self, email, password=None, name=None, phone=None, user_type=None, address=None, **kwargs):
+    def create_user(self, email, password=None, name=None, phone=None, user_type=UserType.ADMIN.value, address=None, **kwargs):
         '''Create a regular user'''
         if not email:
             raise ValueError('The Email field must be set')
@@ -28,7 +30,7 @@ class AccountManager(BaseUserManager):
         user.save(using=self._db)
         return user
 
-    def create_superuser(self, email, password=None, name=None, phone=None, user_type=None, address=None, **kwargs):
+    def create_superuser(self, email, password=None, name=None, phone=None, user_type=UserType.ADMIN.value, address=None, **kwargs):
         '''Create a superuser'''
         if not email:
             raise ValueError('The Email field must be set')
