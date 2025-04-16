@@ -95,7 +95,10 @@ class SubscriptionAPIView(APIView):
         '''For vendors to subscribe to a subscription package'''
         user = request.user
         vendor = Vendor.objects.filter(user=user).first()
-        request.data['vendor'] = vendor.id
+        if vendor is not None:
+            request.data['vendor'] = vendor.id
+        else:
+            return Response( {"message": "There is no vendor profile to your account"},status=status.HTTP_400_BAD_REQUEST)
         serializer = self.serializer_class(data=request.data)
         if serializer.is_valid():
             serializer.save()
