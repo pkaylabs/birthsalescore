@@ -10,10 +10,10 @@ import datetime
 import random
 import string
 from datetime import timedelta
-from django.utils import timezone
 
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
 from django.db import models
+from django.utils import timezone
 
 from bscore.utils.const import ConstList, UserType
 from bscore.utils.services import send_sms
