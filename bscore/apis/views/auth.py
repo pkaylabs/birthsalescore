@@ -1,16 +1,15 @@
+import random
+
 from django.contrib.auth import login
-from django.db.models import Q
 from knox.models import AuthToken
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.models import OTP, User
-from apis.serializers import (ChangePasswordSerializer, LoginSerializer, RegisterUserSerializer, ResetPasswordSerializer,
+from apis.serializers import (ChangePasswordSerializer, LoginSerializer,
+                              RegisterUserSerializer, ResetPasswordSerializer,
                               UserSerializer)
-from bscore.utils.const import UserType
-
-import random
 
 
 class LoginAPI(APIView):
