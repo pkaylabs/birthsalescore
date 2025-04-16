@@ -1,13 +1,13 @@
-from rest_framework import permissions, status
+from django.utils import timezone
+from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from django.utils import timezone
 
 from accounts.models import User, Vendor, Wallet
 from apis.models import Order, Payment, Product
 from bscore.utils.const import UserType
-from bscore.utils.permissions import IsAdminOnly, IsEliteVendorOnly, IsSuperuserOnly
-
+from bscore.utils.permissions import (IsAdminOnly, IsEliteVendorOnly,
+                                      IsSuperuserOnly)
 
 
 class DashboardAPIView(APIView):
