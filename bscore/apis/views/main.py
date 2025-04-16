@@ -3,7 +3,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apis.models import Banner, Product, ProductCategory
-from apis.serializers import ProductSerializer, ProductCategorySerializer, BannerSerializer
+from apis.serializers import (BannerSerializer, ProductCategorySerializer,
+                              ProductSerializer)
 
 
 class HealthCheckAPIView(APIView):
