@@ -1,12 +1,14 @@
-from rest_framework import status, permissions
+from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.models import Subscription, SubscriptionPackage, User, Vendor, Wallet
-from apis.models import Product
-from apis.serializers import ProductSerializer, SubscriptionPackageSerializer, SubscriptionSerializer, UserSerializer, VendorSerializer, WalletSerializer
+from accounts.models import (Subscription, SubscriptionPackage, User, Vendor,
+                             Wallet)
+from apis.serializers import (SubscriptionPackageSerializer,
+                              SubscriptionSerializer, UserSerializer,
+                              VendorSerializer, WalletSerializer)
 from bscore.utils.const import UserType
-from bscore.utils.permissions import IsSuperuserOnly, IsAdminOnly, IsCustomerOnly, IsEliteVendorOnly
+from bscore.utils.permissions import (IsAdminOnly, IsSuperuserOnly)
 
 
 class UsersAPIView(APIView):
