@@ -1,5 +1,7 @@
-from django.db import models
 import uuid
+
+from django.db import models
+
 from accounts.models import User, Vendor
 from bscore.utils.const import ConstList, PaymentMethod, PaymentStatus
 
