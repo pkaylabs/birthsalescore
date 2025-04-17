@@ -99,7 +99,7 @@ class Service(models.Model):
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True, null=True)
     price = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
-    vendor = models.ForeignKey(Vendor, on_delete=models.CASCADE, related_name='services')
+    vendor = models.ForeignKey(Vendor, on_delete=models.CASCADE, related_name='services', null=True, blank=True)
     image = models.ImageField(upload_to='services/', blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
