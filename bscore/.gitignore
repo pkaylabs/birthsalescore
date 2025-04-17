@@ -3,3 +3,4 @@ venv
 # static
 .env
 todos.txt
+assets
