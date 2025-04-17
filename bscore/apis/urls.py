@@ -17,6 +17,7 @@ urlpatterns += [
     path('resetpassword/', views.ResetPasswordAPIView.as_view(), name='reset_password'),
     path('users/', views.UsersAPIView.as_view(), name='users'),
     path('vendors/', views.VendorsAPIView.as_view(), name='vendors'),
+    path('vendorprofile/', views.VendorProfileAPIView.as_view(), name='vendorprofile'),
     path('subscriptionpackage/', views.SubscriptionPackageAPIView.as_view(), name='sub_package'),
     path('subscriptions/', views.SubscriptionAPIView.as_view(), name='subscriptions'),
 ]

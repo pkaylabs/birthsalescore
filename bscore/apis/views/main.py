@@ -48,11 +48,3 @@ class HomepageAPIView(APIView):
             "new_arrivals": ProductSerializer(new_arrivals, many=True).data, 
         }
         return Response(response_data, status=status.HTTP_200_OK)
-
-# eCommerce homepage view
-# 1. Banners
-# 2. Categories
-# 3. Products
-# 4. Featured Products
-# 5. Best Selling Products
-# 6. New Arrivals

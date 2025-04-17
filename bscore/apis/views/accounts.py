@@ -69,11 +69,44 @@ class VendorsAPIView(APIView):
             user = User.objects.filter(id=user_id).first()
             if not user:
                 return Response({"message": "User not found"}, status=status.HTTP_404_NOT_FOUND)
-            user.user_type = UserType.CUSTOMER.value
+            user.user_type = UserType.VENDOR.value
             serializer.save()
             user.save()
             return Response({"message": "Vendor registered successfully", "vendor": serializer.data}, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+
+class VendorProfileAPIView(APIView):
+    '''Vendors use this to get and setup their vendor profile'''
+
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def get(self, request, *args, **kwargs):
+        '''get's the vendor profile'''
+        user = request.user
+        vendor = Vendor.objects.filter(user=user).first()
+        context = {
+            "user": UserSerializer(user).data,
+            "vendor": VendorSerializer(vendor).data
+        }
+        return Response(context, status=status.HTTP_200_OK)
+    
+    def post(self, request, *args, **kwargs):
+        '''Register a new vendor profile - for vendors'''
+        serializer = VendorSerializer(data=request.data)
+        if serializer.is_valid():
+            user = request.user
+            if not user:
+                return Response({"message": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+            vendor = Vendor.objects.filter(user=user).first()
+            if vendor:
+                return Response({"error": "You already have a vendor profile"}, status=status.HTTP_400_BAD_REQUEST)
+            user.user_type = UserType.VENDOR.value
+            serializer.save(user=user)
+            user.save()
+            return Response({"message": "Vendor registered successfully", "vendor": serializer.data}, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
 
 class SubscriptionAPIView(APIView):
     '''API Endpoints for Subscriptions'''

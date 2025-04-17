@@ -2,3 +2,4 @@ venv
 *.sqlite3
 # static
 .env
+todos.txt
