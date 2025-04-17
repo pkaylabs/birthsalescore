@@ -2,9 +2,10 @@ from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apis.models import Order, Product, ProductCategory
+from accounts.models import Vendor
+from apis.models import Order, Product, ProductCategory, Service
 from apis.serializers import (OrderSerializer, ProductCategorySerializer,
-                              ProductSerializer)
+                              ProductSerializer, ServiceSerializer)
 from bscore.utils.const import UserType
 
 
@@ -99,3 +100,54 @@ class OrderAPIView(APIView):
         orders = Order.objects.all().order_by('-created_at')
         serializer = OrderSerializer(orders, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    def post(self, request, *args, **kwargs):
+        pass
+
+
+class ServicesAPIView(APIView):
+    '''Endpoint to get and create services'''
+
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def get(self, request, *args,**kwargs):
+        '''gets available services'''
+        services = Service.objects.all().order_by('-created_at')
+        serialised_data = ServiceSerializer(services, many=True).data
+        return Response(serialised_data, status=status.HTTP_200_OK)
+    
+    def post(self, request, *args, **kwargs):
+        '''create new services -- vendors and admins'''
+        user = request.user
+        vendor = Vendor.objects.filter(user=user).first()
+        vendor_id = request.POST.get('vendor_id')
+        if vendor_id and not vendor:
+            vendor = Vendor.objects.filter(vendor_id=vendor_id).first()
+        
+        if not vendor:
+            return Response({"error": "A vendor profile is required"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        serializer = ServiceSerializer(data=request.data)
+
+        if serializer.is_valid():
+            service = serializer.save(vendor=vendor)
+            return Response(ServiceSerializer(service).data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+
+    def delete(self, request, *args, **kwargs):
+        '''delete a service'''
+        user = request.user
+        service_id = request.data.get('service')
+        if user.is_superuser or user.is_staff or user.user_type == UserType.ADMIN.value:
+            service = Service.objects.filter(id=service_id).first()
+        else:
+            vendor = Vendor.objects.filter(user=user).first()
+            service = Service.objects.filter(vendor=vendor, id=service_id).first()
+        
+        if not service:
+            return Response({"error": "Service not found"}, status=status.HTTP_404_NOT_FOUND)
+        service.delete()
+        return Response({"message": "Service Deleted Successfully"}, status=status.HTTP_200_OK)
+
+
