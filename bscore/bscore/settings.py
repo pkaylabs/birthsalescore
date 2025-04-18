@@ -173,3 +173,7 @@ SENDER_ID = os.getenv('SMS_SENDER_ID') # 11 characters max
 
 # Get the key from .env file
 ARKESEL_API_KEY = os.getenv('ARKESEL_SMS_API_KEY')
+
+# PayHub settings
+PAYHUB_SECRET_TOKEN = os.getenv('PAYHUB_SECRET_TOKEN')
+PAYHUB_WALLET_ID = os.getenv('PAYHUB_WALLET_ID')

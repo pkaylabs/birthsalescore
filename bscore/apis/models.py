@@ -2,8 +2,8 @@ import uuid
 
 from django.db import models
 
-from accounts.models import User, Vendor
-from bscore.utils.const import ConstList, PaymentMethod, PaymentStatus
+from accounts.models import User, Vendor, Subscription
+from bscore.utils.const import ConstList, PaymentMethod, PaymentStatus, PaymentType
 
 
 class ProductCategory(models.Model):
@@ -88,6 +88,14 @@ class Order(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    @property
+    def payment_status(self):
+        '''check if order has been paid for'''
+        payment = Payment.objects.filter(order=self).first()
+        if payment:
+            return payment.status
+        return None
+
     def __str__(self):
         return f"Order {self.id} for {self.user.name}"    
     
@@ -103,6 +111,7 @@ class Service(models.Model):
     image = models.ImageField(upload_to='services/', blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
 
     def __str__(self):
         return self.name
@@ -151,23 +160,54 @@ class AdImage(models.Model):
     def __str__(self):
         return self.ad.title + " - " + str(self.id)
 
+
+class ServiceBooking(models.Model):
+    """Model for representing a service booking."""
+    service = models.ForeignKey(Service, on_delete=models.CASCADE, related_name='bookings')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='service_bookings')
+    date = models.DateField()
+    time = models.TimeField()
+    status = models.CharField(max_length=50, choices=[('Pending', 'Pending'), ('Confirmed', 'Confirmed'), ('Cancelled', 'Cancelled')], default='Pending')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    @property
+    def payment_status(self):
+        '''check if booking has been paid for'''
+        payment = Payment.objects.filter(booking=self).first()
+        if payment:
+            return payment.status
+        return None
+
+    def __str__(self):
+        return f"Booking for {self.service.name} by {self.user.name} on {self.date} at {self.time}"
+
+
 class Payment(models.Model):
     """
     Model representing a payment.
+    Payment can either be for an order, a subscription or a service booking.
     """
     def get_payment_id():
         '''Generate a unique payment ID'''
         return uuid.uuid4().hex[:14]
     
     payment_id = models.CharField(max_length=255, unique=True, default=get_payment_id, editable=False)
-    order = models.ForeignKey(Order, on_delete=models.PROTECT, related_name='payments')
+    order = models.ForeignKey(Order, on_delete=models.PROTECT, related_name='payments', null=True)
+    booking = models.ForeignKey(ServiceBooking, on_delete=models.PROTECT, related_name='payments', null=True)
+    subscription = models.ForeignKey(Subscription, on_delete=models.PROTECT, related_name='payments', null=True)
     user = models.ForeignKey(User, on_delete=models.PROTECT, related_name='payments')
     vendor = models.ForeignKey(Vendor, on_delete=models.PROTECT, related_name='payments',  null=True)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
+    reason = models.CharField(max_length=255, blank=True, null=True)
     payment_method = models.CharField(max_length=10, choices=ConstList.PAYMENT_METHOD, default=PaymentMethod.MOMO.value)
+    payment_type = models.CharField(max_length=10, choices=ConstList.PAYMENT_TYPE, default=PaymentType.DEBIT.value)
     status = models.CharField(max_length=10, choices=ConstList.PAYMENT_STATUS, default=PaymentStatus.PENDING.value)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+
     def __str__(self):
         return f"Payment for Order {self.order.id}: GHC{self.amount}"
+    
+

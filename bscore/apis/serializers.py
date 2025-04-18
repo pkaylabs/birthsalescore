@@ -80,6 +80,7 @@ class SubscriptionSerializer(serializers.ModelSerializer):
     vendor_name = serializers.ReadOnlyField()
     package_name = serializers.ReadOnlyField()
     expired = serializers.ReadOnlyField()
+    payment_status = serializers.ReadOnlyField()
     class Meta:
         model = Subscription
         fields = '__all__'
@@ -111,12 +112,14 @@ class OrderItemSerializer(serializers.ModelSerializer):
 
 class OrderSerializer(serializers.ModelSerializer):
     items = OrderItemSerializer(many=True, read_only=True)
+    payment_status = serializers.ReadOnlyField()
     class Meta:
         model = Order
         fields = '__all__'
 
 class ServiceSerializer(serializers.ModelSerializer):
     vendor = VendorSerializer(read_only=True)
+    payment_status = serializers.ReadOnlyField()
     class Meta:
         model = Service
         fields = '__all__'

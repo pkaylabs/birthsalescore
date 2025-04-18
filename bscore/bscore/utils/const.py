@@ -16,11 +16,24 @@ class PaymentStatus(Enum):
     FAILED = 'FAILED'
 
 
+class ServiceStatus(Enum):
+    '''Service statuses for the application'''
+    PENDING = 'PENDING'
+    ACCEPTED = 'ACCEPTED'
+    REJECTED = 'REJECTED'
+    COMPLETED = 'COMPLETED'
+
+
 class PaymentMethod(Enum):
     '''Payment methods for the application'''
     MOMO = 'MOMO'
     CASH = 'CASH'
 
+
+class PaymentType(Enum):
+    '''Payment types for the application'''
+    DEBIT = 'DEBIT'
+    CREDIT = 'CREDIT'
 
 class ConstList:
     '''Lists for the application'''
@@ -34,6 +47,14 @@ class ConstList:
 
     PAYMENT_METHOD = [
         (payment_method.value, payment_method.value) for payment_method in PaymentMethod
+    ]
+
+    PAYMENT_TYPE = [
+        (payment_type.value, payment_type.value) for payment_type in PaymentType
+    ]
+
+    SERVICE_STATUS = [
+        (service_status.value, service_status.value) for service_status in ServiceStatus
     ]
 
 

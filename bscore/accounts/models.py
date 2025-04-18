@@ -158,6 +158,15 @@ class Subscription(models.Model):
     @property
     def package_name(self):
         return self.package.package_name
+    
+    @property
+    def payment_status(self):
+        '''check if subscription has been paid for'''
+        from apis.models import Payment
+        payment = Payment.objects.filter(subscription=self).first()
+        if payment:
+            return payment.status
+        return None
 
     # set the end date to 30 days from the start date
     def save(self, *args, **kwargs):
