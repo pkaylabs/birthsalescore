@@ -100,7 +100,12 @@ class VendorProfileAPIView(APIView):
                 return Response({"message": "User not found"}, status=status.HTTP_404_NOT_FOUND)
             vendor = Vendor.objects.filter(user=user).first()
             if vendor:
-                return Response({"error": "You already have a vendor profile"}, status=status.HTTP_400_BAD_REQUEST)
+                # if vendor profile already exists, update it with the new data
+                serializer = VendorSerializer(vendor, data=request.data, partial=True)
+                if serializer.is_valid():
+                    serializer.save()
+                    return Response({"message": "Vendor profile updated successfully", "vendor": serializer.data}, status=status.HTTP_200_OK)
+                return Response({"error": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
             user.user_type = UserType.VENDOR.value
             serializer.save(user=user)
             user.save()
