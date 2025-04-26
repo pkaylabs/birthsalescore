@@ -113,6 +113,12 @@ class Service(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
 
+    @property
+    def bookings(self):
+        '''get all bookings for this service'''
+        return ServiceBooking.objects.filter(service=self).count()
+
+
     def __str__(self):
         return self.name
 
@@ -203,6 +209,7 @@ class Payment(models.Model):
     payment_method = models.CharField(max_length=10, choices=ConstList.PAYMENT_METHOD, default=PaymentMethod.MOMO.value)
     payment_type = models.CharField(max_length=10, choices=ConstList.PAYMENT_TYPE, default=PaymentType.DEBIT.value)
     status = models.CharField(max_length=10, choices=ConstList.PAYMENT_STATUS, default=PaymentStatus.PENDING.value)
+    status_code = models.CharField(max_length=10, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
