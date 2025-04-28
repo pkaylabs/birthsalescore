@@ -89,12 +89,12 @@ class Order(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     @property
-    def payment_status(self):
+    def payment_status(self) -> str:
         '''check if order has been paid for'''
         payment = Payment.objects.filter(order=self).first()
         if payment:
             return payment.status
-        return None
+        return "None"
 
     def __str__(self):
         return f"Order {self.id} for {self.user.name}"    
@@ -112,11 +112,11 @@ class Service(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-
-    @property
-    def bookings(self):
+    # @property
+    def bookings(self) -> int:
         '''get all bookings for this service'''
-        return ServiceBooking.objects.filter(service=self).count()
+        bookings = ServiceBooking.objects.filter(service=self).count()
+        return bookings
 
 
     def __str__(self):
@@ -178,12 +178,12 @@ class ServiceBooking(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     @property
-    def payment_status(self):
+    def payment_status(self) -> str:
         '''check if booking has been paid for'''
         payment = Payment.objects.filter(booking=self).first()
         if payment:
             return payment.status
-        return None
+        return "None"
 
     def __str__(self):
         return f"Booking for {self.service.name} by {self.user.name} on {self.date} at {self.time}"

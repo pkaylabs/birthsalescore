@@ -113,8 +113,8 @@ class ServicesAPIView(APIView):
     def get(self, request, *args,**kwargs):
         '''gets available services'''
         services = Service.objects.all().order_by('-created_at')
-        serialised_data = ServiceSerializer(services, many=True).data
-        return Response(serialised_data, status=status.HTTP_200_OK)
+        serializer = ServiceSerializer(services, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
     
     def post(self, request, *args, **kwargs):
         '''create new services -- vendors and admins'''

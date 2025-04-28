@@ -119,8 +119,12 @@ class OrderSerializer(serializers.ModelSerializer):
 
 class ServiceSerializer(serializers.ModelSerializer):
     vendor = VendorSerializer(read_only=True)
-    payment_status = serializers.ReadOnlyField()
-    bookings = serializers.ReadOnlyField()
+    bookings = serializers.SerializerMethodField()
+
+    def get_bookings(self, obj):
+        bookings = ServiceBooking.objects.filter(service=obj).count()
+        return bookings
+    
     class Meta:
         model = Service
         fields = '__all__'
