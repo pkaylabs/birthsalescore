@@ -184,6 +184,18 @@ class ServiceBooking(models.Model):
         if payment:
             return payment.status
         return "None"
+    
+    @property
+    def service_name(self) -> str:
+        return self.service.name
+    
+    @property
+    def user_name(self) -> str:
+        return self.user.name
+    
+    @property
+    def vendor_name(self):
+        return self.service.vendor.vendor_name
 
     def __str__(self):
         return f"Booking for {self.service.name} by {self.user.name} on {self.date} at {self.time}"
