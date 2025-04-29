@@ -52,3 +52,8 @@ class AdImageAdmin(admin.ModelAdmin):
 class PaymentAdmin(admin.ModelAdmin):
     list_display = ('payment_id', 'order', 'user', 'amount', 'status', 'created_at')
     search_fields = ('payment_id', 'order__id', 'user__name')
+
+@admin.register(ServiceBooking)
+class ServiceBookingAdmin(admin.ModelAdmin):
+    list_display = ('service', 'user', 'status', 'created_at',)
+    search_fields = ('service', 'user',)
