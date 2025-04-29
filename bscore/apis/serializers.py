@@ -117,6 +117,16 @@ class OrderSerializer(serializers.ModelSerializer):
         model = Order
         fields = '__all__'
 
+class ServiceBookingSerializer(serializers.ModelSerializer):
+    '''Serializer for service booking'''
+    service_name = serializers.ReadOnlyField()
+    user_name = serializers.ReadOnlyField()
+    vendor_name = serializers.ReadOnlyField()
+
+    class Meta:
+        model = ServiceBooking
+        fields = '__all__'
+
 class ServiceSerializer(serializers.ModelSerializer):
     vendor = VendorSerializer(read_only=True)
     bookings = serializers.SerializerMethodField()
@@ -159,7 +169,6 @@ class ChangePasswordSerializer(serializers.Serializer):
         if data.get('new_password') != data.get('confirm_password'):
             raise serializers.ValidationError("Passwords do not match")
         return data
-    
 
 class ResetPasswordSerializer(serializers.Serializer):
     '''Serializer for resetting password'''
