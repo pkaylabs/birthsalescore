@@ -3,9 +3,9 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.models import Vendor
-from apis.models import Order, Product, ProductCategory, Service
+from apis.models import Order, Product, ProductCategory, Service, ServiceBooking
 from apis.serializers import (OrderSerializer, ProductCategorySerializer,
-                              ProductSerializer, ServiceSerializer)
+                              ProductSerializer, ServiceBookingSerializer, ServiceSerializer)
 from bscore.utils.const import UserType
 
 
@@ -151,3 +151,24 @@ class ServicesAPIView(APIView):
         return Response({"message": "Service Deleted Successfully"}, status=status.HTTP_200_OK)
 
 
+class BookingsAPIView(APIView):
+    '''Endpoint to get and create bookings'''
+
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def get(self, request, *args, **kwargs):
+        '''gets available services'''
+        user = request.user
+        # admin users get to see all bookings
+        if user.is_superuser or user.is_staff or user.user_type == UserType.ADMIN.value:
+            bookings = ServiceBooking.objects.all().order_by('-created_at')
+        elif user.user_type == UserType.VENDOR.value:
+            # vendors get to see only the bookings for their services
+            vendor = Vendor.objects.filter(user=user).first()
+            bookings = ServiceBooking.objects.filter(service__vendor=vendor).order_by('-created_at')
+        else:
+            # any other user type sees empty list for now.
+            bookings = ServiceBooking.objects.none()
+        serializer = ServiceBookingSerializer(bookings, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
