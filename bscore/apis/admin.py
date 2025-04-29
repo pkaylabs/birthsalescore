@@ -57,3 +57,8 @@ class PaymentAdmin(admin.ModelAdmin):
 class ServiceBookingAdmin(admin.ModelAdmin):
     list_display = ('service', 'user', 'status', 'created_at',)
     search_fields = ('service', 'user',)
+
+@admin.register(Banner)
+class BannerAdmin(admin.ModelAdmin):
+    list_display = ('title', 'link', 'is_active', 'created_at')
+    search_fields = ('title', 'link')

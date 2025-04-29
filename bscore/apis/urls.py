@@ -9,6 +9,7 @@ urlpatterns = [
 
 # accounts and users
 urlpatterns += [
+    path('homepage/', views.HomepageAPIView.as_view(), name='homepage'),
     path('login/', views.LoginAPI.as_view(), name='login'),
     path('verifyotp/', views.VerifyOTPAPI.as_view(), name='verify_otp'),
     path('register/', views.RegisterAPI.as_view(), name='register_user'),
@@ -22,4 +23,5 @@ urlpatterns += [
     path('vendorprofile/', views.VendorProfileAPIView.as_view(), name='vendorprofile'),
     path('subscriptionpackage/', views.SubscriptionPackageAPIView.as_view(), name='sub_package'),
     path('subscriptions/', views.SubscriptionAPIView.as_view(), name='subscriptions'),
+    path('dashboard/', views.DashboardAPIView.as_view(), name='dashboard'),
 ]

@@ -83,6 +83,7 @@ class Order(models.Model):
     Model representing an order.
     """
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='orders')
+    # order items will be limited: only Items belonging to the same vendor can be ordered at a time.
     items = models.ManyToManyField(OrderItem, related_name='orders')
     status = models.CharField(max_length=50, choices=[('Pending', 'Pending'), ('Completed', 'Completed'), ('Cancelled', 'Cancelled')], default='Pending')
     created_at = models.DateTimeField(auto_now_add=True)
@@ -95,6 +96,11 @@ class Order(models.Model):
         if payment:
             return payment.status
         return "None"
+    
+    @property
+    def vendor_id(self) -> str:
+        item = self.items[0]
+        return item.product.vendor.vendor_id
 
     def __str__(self):
         return f"Order {self.id} for {self.user.name}"    
