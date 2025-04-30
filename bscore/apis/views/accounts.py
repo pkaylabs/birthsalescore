@@ -18,7 +18,7 @@ class UsersAPIView(APIView):
 
     def get(self, request, *args, **kwargs):
         '''Retrieve all users (Only admins can access)'''
-        users = User.objects.all().order_by('-created_at')
+        users = User.objects.filter(deleted=False).order_by('-created_at')
         serializer = UserSerializer(users, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
