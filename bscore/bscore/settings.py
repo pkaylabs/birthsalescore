@@ -156,14 +156,7 @@ SPECTACULAR_SETTINGS = {
 }
 
 # django cors headers settings
-# CORS_ALLOW_ALL_ORIGINS = True
-
-CORS_ALLOWED_ORIGINS = [
-    # any subdomain of birthnon.com
-    "https://*.birthnon.com",
-    # localhost for development
-    "http://localhost",
-]
+CORS_ALLOW_ALL_ORIGINS = True
 
 
 # NOTIFICATION SETTINGS
