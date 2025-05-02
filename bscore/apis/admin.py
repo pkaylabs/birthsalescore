@@ -10,7 +10,7 @@ class ProductCategoryAdmin(admin.ModelAdmin):
 
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
-    list_display = ('name', 'vendor', 'price', 'category', 'in_stock', 'is_published')
+    list_display = ('id', 'name', 'vendor', 'price', 'category', 'in_stock', 'is_published')
     search_fields = ('name', 'vendor__vendor_name', 'category__name')
 
 @admin.register(ProductImages)
