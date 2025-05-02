@@ -117,6 +117,13 @@ class OrderSerializer(serializers.ModelSerializer):
         model = Order
         fields = '__all__'
 
+class PlaceOrderSerializer(serializers.ModelSerializer):
+    '''Serializer for placing an order'''
+    items = OrderItemSerializer(many=True)
+    class Meta:
+        model = Order
+        fields = '__all__'
+
 class ServiceBookingSerializer(serializers.ModelSerializer):
     '''Serializer for service booking'''
     service_name = serializers.ReadOnlyField()
