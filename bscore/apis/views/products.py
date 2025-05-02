@@ -30,23 +30,36 @@ class ProductAPIView(APIView):
     def post(self, request, *args, **kwargs):
         '''Create a new product''' 
         user = request.user
-        if user.user_type != UserType.VENDOR.value:
-            return Response({"message": "Only vendors can add products"}, status=status.HTTP_403_FORBIDDEN)
+        # if user.user_type != UserType.VENDOR.value :
+        #     return Response({"message": "Only vendors can add products"}, status=status.HTTP_403_FORBIDDEN)
+        vendor = Vendor.objects.filter(user=user).first()
+        if user.is_superuser or user.is_staff or user.user_type == UserType.ADMIN.value:
+            vendor_id = request.POST.get('vendor')
+            if vendor_id:
+                vendor = Vendor.objects.filter(id=vendor_id).first()
         
         serializer = ProductSerializer(data=request.data)
         if serializer.is_valid():
-            serializer.save(vendor=user.vendor_profile)
+            if vendor:
+                serializer.validated_data['vendor'] = vendor
+            else:
+                return Response({"message": "Vendor profile not found"}, status=status.HTTP_400_BAD_REQUEST)
+            serializer.save()
             return Response({"message": "Product created successfully", "product": serializer.data}, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def put(self, request, *args, **kwargs):
         '''Update a product (Only vendor who owns it can update)'''
         user = request.user
+        vendor = Vendor.objects.filter(user=user).first()
         product_id = request.data.get('product_id')
-        product = Product.objects.filter(id=product_id, vendor=user.vendor_profile).first()
+        if user.is_superuser or user.is_staff or user.user_type == UserType.ADMIN.value:
+           product = Product.objects.filter(id=product_id).first()
+        else:
+            product = Product.objects.filter(id=product_id, vendor=vendor).first()
 
         if not product:
-            return Response({"message": "Product not found or permission denied"}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"message": "Product not found"}, status=status.HTTP_404_NOT_FOUND)
         
         serializer = ProductSerializer(product, data=request.data, partial=True)
         if serializer.is_valid():
@@ -57,8 +70,12 @@ class ProductAPIView(APIView):
     def delete(self, request, *args, **kwargs):
         '''Delete a product (Only vendor who owns it can delete)'''
         user = request.user
+        vendor = Vendor.objects.filter(user=user).first()
         product_id = request.data.get('product_id')
-        product = Product.objects.filter(id=product_id, vendor=user.vendor_profile).first()
+        if user.is_superuser or user.is_staff or user.user_type == UserType.ADMIN.value:
+            product = Product.objects.filter(id=product_id).first()
+        else:
+            product = Product.objects.filter(id=product_id, vendor=vendor).first()
 
         if not product:
             return Response({"message": "Product not found or permission denied"}, status=status.HTTP_404_NOT_FOUND)
@@ -172,3 +189,20 @@ class BookingsAPIView(APIView):
         serializer = ServiceBookingSerializer(bookings, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
     
+class PlaceOrderAPIView(APIView):
+    '''Endpoint to place an order'''
+
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def post(self, request, *args, **kwargs):
+        user = request.user
+        # if user.is_superuser or user.is_staff or user.user_type == UserType.ADMIN.value:
+        #     return Response({"error": "Admins cannot place orders"}, status=status.HTTP_403_FORBIDDEN)
+        
+        req_data = request.data.copy()
+        req_data['user'] = user.id
+        serializer = OrderSerializer(data=req_data)
+        if serializer.is_valid():
+            order = serializer.save()
+            return Response({ "message": "Order Placed Successfully",  "data": OrderSerializer(order).data}, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
