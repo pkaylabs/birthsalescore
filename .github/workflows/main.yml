@@ -30,10 +30,10 @@ jobs:
         if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
         
     - name: Run migrations
-      run: python manage.py migrate
+      run: python bscore/manage.py migrate
         
     - name: Run tests
-      run: python manage.py test
+      run: python bscore/manage.py test
 
   deploy:
     needs: test
@@ -54,7 +54,7 @@ jobs:
         pip install -r bscore/requirements.txt
         
     - name: Collect static files
-      run: python manage.py collectstatic --noinput
+      run: python bscore/manage.py collectstatic --noinput
       
     - name: Install sshpass for password authentication
       run: sudo apt-get install -y sshpass
