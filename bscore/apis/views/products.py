@@ -143,7 +143,8 @@ class OrderAPIView(APIView):
             # Other user types see nothing
             orders = Order.objects.none()
 
-        # Optimize queries
+        # Optimize queries using prefetch_related and select_related
+        # This will reduce the number of queries made to the database
         orders = orders.select_related('user').prefetch_related(
             'items',
             'items__product',
