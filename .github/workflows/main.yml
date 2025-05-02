@@ -9,7 +9,6 @@ on:
   
 env:
   PYTHON_VERSION: '3.12.7'
-  DJANGO_SETTINGS_MODULE: 'bscore.settings.test'
 
 jobs:
   test:
