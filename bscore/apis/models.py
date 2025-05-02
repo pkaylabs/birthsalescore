@@ -75,7 +75,7 @@ class OrderItem(models.Model):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.quantity} of {self.product.name} in Order {self.order.id}"
+        return f"{self.quantity} of {self.product.name} at GHC{self.price}"
     
 
 class Order(models.Model):
@@ -96,6 +96,14 @@ class Order(models.Model):
         if payment:
             return payment.status
         return "None"
+    
+    @property
+    def total_price(self) -> float:
+        '''calculate total price of order'''
+        total = 0.0
+        for item in self.items.all():
+            total += float(item.price)
+        return total
     
     @property
     def vendor_id(self) -> str:
