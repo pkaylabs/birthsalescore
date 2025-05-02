@@ -5,7 +5,7 @@ from .models import *
 
 @admin.register(ProductCategory)
 class ProductCategoryAdmin(admin.ModelAdmin):
-    list_display = ('name', 'created_at')
+    list_display = ('id', 'name', 'created_at')
     search_fields = ('name',)
 
 @admin.register(Product)
@@ -30,7 +30,7 @@ class OrderItemAdmin(admin.ModelAdmin):
 
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
-    list_display = ('user', 'status', 'created_at')
+    list_display = ('user', 'total_price', 'status', 'payment_status', 'created_at')
     search_fields = ('user__name', 'status')
 
 @admin.register(Service)
