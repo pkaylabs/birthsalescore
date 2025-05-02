@@ -94,6 +94,9 @@ class ProductCategoryAPIView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def post(self, request, *args, **kwargs):
+        # only admins can create categories
+        if not request.user.is_superuser and not request.user.is_staff and request.user.user_type != UserType.ADMIN.value:
+            return Response({"message": "Only admins can create categories"}, status=status.HTTP_403_FORBIDDEN)
         serializer = ProductCategorySerializer(data=request.data)
         if serializer.is_valid():
             serializer.save()
@@ -101,6 +104,9 @@ class ProductCategoryAPIView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def delete(self, request, *args, **kwargs):
+        # only admins can delete categories
+        if not request.user.is_superuser and not request.user.is_staff and request.user.user_type != UserType.ADMIN.value:
+            return Response({"message": "Only admins can delete categories"}, status=status.HTTP_403_FORBIDDEN)
         category_id = request.data.get('category_id')
         category = ProductCategory.objects.filter(id=category_id).first()
         if not category:

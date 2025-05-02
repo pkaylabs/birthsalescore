@@ -25,5 +25,6 @@ urlpatterns += [
     path('subscriptions/', views.SubscriptionAPIView.as_view(), name='subscriptions'),
     path('dashboard/', views.DashboardAPIView.as_view(), name='dashboard'),
     path('products/', views.ProductAPIView.as_view(), name='products'),
+    path('productcategory/', views.ProductCategoryAPIView.as_view(), name='category'),
     path('placeorder/', views.PlaceOrderAPIView.as_view(), name='place_order'),
 ]
