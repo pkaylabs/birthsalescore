@@ -159,11 +159,16 @@ class Ad(models.Model):
     description = models.CharField(max_length=500)
     original_price = models.PositiveIntegerField(default=0)
     discount = models.PositiveIntegerField(default=0) # in percentage /100
+    discount_type = models.CharField(max_length=50, choices=[('Percentage', 'Percentage'), ('Fixed', 'Fixed')], default='Percentage')
     end_date = models.DateField()
 
     @property
     def discounted_price(self) -> float:
-        return ((100 - self.discount) / 100) * self.original_price
+        '''calculate discounted price'''
+        if self.discount_type == 'Percentage':
+            return self.original_price - (self.original_price * (self.discount / 100))
+        elif self.discount_type == 'Fixed':
+            return self.original_price - self.discount
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
