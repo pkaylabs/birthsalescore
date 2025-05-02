@@ -3,9 +3,11 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.models import Vendor
-from apis.models import Order, Product, ProductCategory, Service, ServiceBooking
-from apis.serializers import (OrderSerializer, PlaceOrderSerializer, ProductCategorySerializer,
-                              ProductSerializer, ServiceBookingSerializer, ServiceSerializer)
+from apis.models import (Order, Product, ProductCategory, Service,
+                         ServiceBooking)
+from apis.serializers import (OrderSerializer, PlaceOrderSerializer,
+                              ProductCategorySerializer, ProductSerializer,
+                              ServiceBookingSerializer, ServiceSerializer)
 from bscore.utils.const import UserType
 
 

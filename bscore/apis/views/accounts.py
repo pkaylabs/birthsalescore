@@ -8,7 +8,7 @@ from apis.serializers import (SubscriptionPackageSerializer,
                               SubscriptionSerializer, UserSerializer,
                               VendorSerializer, WalletSerializer)
 from bscore.utils.const import UserType
-from bscore.utils.permissions import (IsAdminOnly, IsSuperuserOnly)
+from bscore.utils.permissions import IsAdminOnly, IsSuperuserOnly
 
 
 class UsersAPIView(APIView):

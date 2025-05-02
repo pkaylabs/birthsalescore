@@ -2,8 +2,9 @@ import uuid
 
 from django.db import models
 
-from accounts.models import User, Vendor, Subscription
-from bscore.utils.const import ConstList, PaymentMethod, PaymentStatus, PaymentType
+from accounts.models import Subscription, User, Vendor
+from bscore.utils.const import (ConstList, PaymentMethod, PaymentStatus,
+                                PaymentType)
 
 
 class ProductCategory(models.Model):

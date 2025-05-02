@@ -1,10 +1,10 @@
 import array
 import decimal
-import requests
+import random
 import string
 import time
-import random
 
+import requests
 
 from bscore import settings
 
