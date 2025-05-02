@@ -102,12 +102,12 @@ class Order(models.Model):
         '''calculate total price of order'''
         total = 0.0
         for item in self.items.all():
-            total += float(item.price)
+            total += float(item.price * item.quantity)
         return total
     
     @property
     def vendor_id(self) -> str:
-        item = self.items[0]
+        item = self.items.first()
         return item.product.vendor.vendor_id
 
     def __str__(self):

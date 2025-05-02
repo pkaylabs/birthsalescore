@@ -113,6 +113,8 @@ class OrderItemSerializer(serializers.ModelSerializer):
 class OrderSerializer(serializers.ModelSerializer):
     items = OrderItemSerializer(many=True, read_only=True)
     payment_status = serializers.ReadOnlyField()
+    total_price = serializers.ReadOnlyField()
+    vendor_id = serializers.ReadOnlyField()
     class Meta:
         model = Order
         fields = '__all__'
@@ -120,9 +122,32 @@ class OrderSerializer(serializers.ModelSerializer):
 class PlaceOrderSerializer(serializers.ModelSerializer):
     '''Serializer for placing an order'''
     items = OrderItemSerializer(many=True)
+    
     class Meta:
         model = Order
-        fields = '__all__'
+        fields = ['user', 'items', 'status']
+    
+    def create(self, validated_data):
+        items_data = validated_data.pop('items')
+        # chech if the items are from the same vendor
+        vendor_id = items_data[0]['product'].vendor.id
+        for item_data in items_data:
+            if item_data['product'].vendor.id != vendor_id:
+                raise serializers.ValidationError("All items must be from the same vendor")
+        order = Order.objects.create(**validated_data)
+        order_items = []
+        for item_data in items_data:
+            product = item_data['product']
+            quantity = item_data.get('quantity', 1)
+            order_item = OrderItem.objects.create(
+                product=product,
+                quantity=quantity
+            )
+            order_items.append(order_item)
+        
+        # Add all items to the order
+        order.items.set(order_items)
+        return order
 
 class ServiceBookingSerializer(serializers.ModelSerializer):
     '''Serializer for service booking'''

@@ -4,7 +4,7 @@ from rest_framework.views import APIView
 
 from accounts.models import Vendor
 from apis.models import Order, Product, ProductCategory, Service, ServiceBooking
-from apis.serializers import (OrderSerializer, ProductCategorySerializer,
+from apis.serializers import (OrderSerializer, PlaceOrderSerializer, ProductCategorySerializer,
                               ProductSerializer, ServiceBookingSerializer, ServiceSerializer)
 from bscore.utils.const import UserType
 
@@ -114,18 +114,43 @@ class ProductCategoryAPIView(APIView):
         category.delete()
         return Response({"message": "Category deleted successfully"}, status=status.HTTP_200_OK)
     
-    
+
 class OrderAPIView(APIView):
     '''API Endpoints for Orders (Read-only)'''
     permission_classes = (permissions.IsAuthenticated,)
 
     def get(self, request, *args, **kwargs):
-        orders = Order.objects.all().order_by('-created_at')
+        '''Get orders based on user role'''
+        user = request.user
+        
+        if user.is_superuser or user.is_staff or user.user_type == UserType.ADMIN.value:
+            # ADMIN: See all orders
+            orders = Order.objects.all()
+            
+        elif user.user_type == UserType.VENDOR.value:
+            # VENDOR: See orders containing THEIR products
+            orders = Order.objects.filter(
+                items__product__vendor__user=user  # Orders with items from this vendor
+            ).distinct()  # Avoid duplicates if order has multiple items from same vendor
+            
+        elif user.user_type == UserType.CUSTOMER.value:
+            # CUSTOMER: See only THEIR OWN orders
+            orders = Order.objects.filter(user=user)
+            
+        else:
+            # Other user types see nothing
+            orders = Order.objects.none()
+
+        # Optimize queries
+        orders = orders.select_related('user').prefetch_related(
+            'items',
+            'items__product',
+            'items__product__vendor',
+            'items__product__vendor__user'
+        ).order_by('-created_at')
+
         serializer = OrderSerializer(orders, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
-    
-    def post(self, request, *args, **kwargs):
-        pass
 
 
 class ServicesAPIView(APIView):
@@ -202,12 +227,10 @@ class PlaceOrderAPIView(APIView):
 
     def post(self, request, *args, **kwargs):
         user = request.user
-        # if user.is_superuser or user.is_staff or user.user_type == UserType.ADMIN.value:
-        #     return Response({"error": "Admins cannot place orders"}, status=status.HTTP_403_FORBIDDEN)
-        
+      
         req_data = request.data.copy()
         req_data['user'] = user.id
-        serializer = OrderSerializer(data=req_data)
+        serializer = PlaceOrderSerializer(data=req_data)
         if serializer.is_valid():
             order = serializer.save()
             return Response({ "message": "Order Placed Successfully",  "data": OrderSerializer(order).data}, status=status.HTTP_201_CREATED)
