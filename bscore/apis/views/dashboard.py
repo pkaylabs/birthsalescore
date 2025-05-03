@@ -27,7 +27,7 @@ class DashboardAPIView(APIView):
             wallet = Wallet.objects.filter(vendor=vendor).first()
             products = Product.objects.filter(vendor=vendor).count()
             # technical dept
-            orders = len([ord for ord in Order.objects.all() if ord.vendor_id() == vendor.vendor_id])
+            orders = len([ord for ord in Order.objects.all() if ord.vendor_id == vendor.vendor_id])
             # orders = Order.objects.filter(vendor_id=vendor.vendor_id).count()
             sales_today = sum([p.amount for p in Payment.objects.filter(
                 vendor=vendor,
