@@ -109,7 +109,7 @@ class Order(models.Model):
     @property
     def vendor_id(self) -> str:
         item = self.items.first()
-        return item.product.vendor.vendor_id
+        return item.product.vendor.vendor_id if item else None
 
     def __str__(self):
         return f"Order {self.id} for {self.user.name}"    
