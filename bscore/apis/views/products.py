@@ -1,6 +1,7 @@
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from django.db.models import Q
 
 from accounts.models import Vendor
 from apis.models import (Order, Product, ProductCategory, Service,
@@ -85,6 +86,31 @@ class ProductAPIView(APIView):
         product.delete()
         return Response({"message": "Product deleted successfully"}, status=status.HTTP_200_OK)
 
+
+class CustomersProductAPIView(APIView):
+    '''API Endpoints for to get products for customers'''
+
+    permission_classes = (permissions.AllowAny,)
+
+    def get(self, request, *args, **kwargs):
+        '''Get all products for customers'''
+        query = request.query_params.get('query', None)
+        if query and query.isdigit():
+            # filter products based on query
+            products = Product.objects.filter(is_published=True, id=query).first()
+            many = False
+        else:
+            # get all products
+            products = Product.objects.filter(is_published=True).order_by('-created_at')
+            many = True
+        if query and not products:
+            return Response({"message": "No products found"}, status=status.HTTP_404_NOT_FOUND)
+        if query and products:
+            serializer = ProductSerializer(products, many=False)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        # filter products based on query
+        serializer = ProductSerializer(products, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 class ProductCategoryAPIView(APIView):
     '''API Endpoints for Product Categories'''

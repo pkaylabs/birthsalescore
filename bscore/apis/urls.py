@@ -28,4 +28,5 @@ urlpatterns += [
     path('productcategory/', views.ProductCategoryAPIView.as_view(), name='category'),
     path('placeorder/', views.PlaceOrderAPIView.as_view(), name='place_order'),
     path('orders/', views.OrderAPIView.as_view(), name='orders'),
+    path('customerproducts/', views.CustomersProductAPIView.as_view(), name='products_detail'),
 ]
