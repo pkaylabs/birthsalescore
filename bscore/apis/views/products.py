@@ -111,6 +111,26 @@ class CustomersProductAPIView(APIView):
         # filter products based on query
         serializer = ProductSerializer(products, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+    
+class ProductSearchAPIView(APIView):
+    '''API Endpoints for searching products'''
+
+    permission_classes = (permissions.AllowAny,)
+
+    def get(self, request, *args, **kwargs):
+        '''Get all products for customers'''
+        query = request.query_params.get('query', None)
+        if query:
+            # filter products based on query
+            products = Product.objects.filter(
+                Q(name__icontains=query) | Q(description__icontains=query) | Q(category__name__icontains=query),
+                is_published=True
+            ).order_by('-created_at')
+        else:
+            # get all products
+            products = Product.objects.filter(is_published=True).order_by('-created_at')
+        serializer = ProductSerializer(products, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 class ProductCategoryAPIView(APIView):
     '''API Endpoints for Product Categories'''
