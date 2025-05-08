@@ -9,7 +9,6 @@ import requests
 from rest_framework import status
 from rest_framework.response import Response
 
-
 from accounts.models import Vendor
 from apis.models import Payment
 from apis.serializers import PaymentSerializer

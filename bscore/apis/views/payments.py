@@ -1,3 +1,4 @@
+from django.db.models import Q
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -7,8 +8,8 @@ from apis.models import Payment
 from apis.serializers import PaymentSerializer
 from bscore.utils.const import PaymentType, UserType
 from bscore.utils.permissions import allow_domains
-from bscore.utils.services import can_cashout, execute_momo_transaction, get_transaction_status
-from django.db.models import Q
+from bscore.utils.services import (can_cashout, execute_momo_transaction,
+                                   get_transaction_status)
 
 
 class PaymentAPIView(APIView):

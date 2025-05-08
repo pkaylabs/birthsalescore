@@ -18,7 +18,6 @@ from django.utils import timezone
 
 from bscore.utils.const import ConstList, UserType
 
-
 from .manager import AccountManager
 
 
