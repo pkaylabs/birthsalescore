@@ -33,4 +33,6 @@ urlpatterns += [
     path('cashout/', views.VendorCashoutAPI.as_view(), name='cashout'),
     path('payments/', views.PaymentAPIView.as_view(), name='payments'),
     path('makepayment/', views.MakePaymentAPI.as_view(), name='make_payment'),
+    path('paymentcallback/', views.PaymentCallbackAPI.as_view(), name='payment_callback'),
+    path('paymentstatus/', views.PaymentStatusCheckAPI.as_view(), name='payment_status'),
 ]
