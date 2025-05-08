@@ -240,7 +240,7 @@ class Payment(models.Model):
     reason = models.CharField(max_length=255, blank=True, null=True)
     payment_method = models.CharField(max_length=10, choices=ConstList.PAYMENT_METHOD, default=PaymentMethod.MOMO.value)
     payment_type = models.CharField(max_length=10, choices=ConstList.PAYMENT_TYPE, default=PaymentType.DEBIT.value)
-    status = models.CharField(max_length=10, choices=ConstList.PAYMENT_STATUS, default=PaymentStatus.PENDING.value)
+    status = models.CharField(max_length=10, default=PaymentStatus.PENDING.value)
     status_code = models.CharField(max_length=10, blank=True, null=True)
     vendor_credited_debited = models.BooleanField(default=False) # True if vendor has been credited or debited
     created_at = models.DateTimeField(auto_now_add=True)
