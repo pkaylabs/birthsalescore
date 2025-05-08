@@ -16,7 +16,7 @@ from django.db import models
 from django.utils import timezone
 
 from bscore.utils.const import ConstList, UserType
-from bscore.utils.services import send_sms
+
 
 from .manager import AccountManager
 
@@ -102,6 +102,7 @@ class Vendor(models.Model):
 
     def send_welcome_sms(self) -> None:
         '''Send a welcome notification to the vendor'''
+        from bscore.utils.services import send_sms
         msg = f'Welcome to the Birthnon Multi-vendor eCommerce Platform!\nYour Vendor Account ({self.vendor_name}) has been created successfully.\n\nRegards.\nThe Birthnon Team'
         send_sms(msg, [self.vendor_phone])
         print(msg)
@@ -115,6 +116,11 @@ class Vendor(models.Model):
         else:
             return
         return 
+    
+    def get_wallet(self) -> any:
+        '''Get the wallet for the vendor'''
+        wallet = Wallet.objects.filter(vendor=self).first()
+        return wallet
 
     def __str__(self):
         return self.vendor_name + ' - ' + self.user.name if self.user else self.vendor_id
@@ -226,6 +232,7 @@ class OTP(models.Model):
     
     def send_otp(self) -> None:
         '''Send the OTP to the user'''
+        from bscore.utils.services import send_sms
         msg = f'Welcome to Birthnon.\n\nYour OTP is {self.otp}\n\nRegards,\nThe Birthnon Team!'
         send_sms(msg, [self.phone])
         print(msg)

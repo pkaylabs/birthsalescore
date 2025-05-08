@@ -30,4 +30,7 @@ urlpatterns += [
     path('orders/', views.OrderAPIView.as_view(), name='orders'),
     path('customerproducts/', views.CustomersProductAPIView.as_view(), name='products_detail'),
     path('searchproducts/', views.ProductSearchAPIView.as_view(), name='search'),
+    path('cashout/', views.VendorCashoutAPI.as_view(), name='cashout'),
+    path('payments/', views.PaymentAPIView.as_view(), name='payments'),
+    path('makepayment/', views.MakePaymentAPI.as_view(), name='make_payment'),
 ]

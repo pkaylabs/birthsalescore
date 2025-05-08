@@ -35,6 +35,12 @@ class PaymentType(Enum):
     DEBIT = 'DEBIT'
     CREDIT = 'CREDIT'
 
+class PaymentStatusCode(Enum):
+    '''Payment status codes for the application'''
+    SUCCESS = '000'
+    PENDING = '004'
+    FAILED = '107'
+
 class ConstList:
     '''Lists for the application'''
     USER_TYPE = [

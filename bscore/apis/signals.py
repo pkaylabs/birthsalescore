@@ -4,7 +4,8 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 
 from accounts.models import OTP, User, Vendor
-from bscore.utils.const import UserType
+from apis.models import Payment
+from bscore.utils.const import PaymentStatusCode, PaymentType, UserType
 
 
 @receiver(post_save, sender=User)
@@ -45,3 +46,34 @@ def create_Vendor_wallet(sender, instance, created, **kwargs):
         instance.create_wallet()
 
     return
+
+@receiver(post_save, sender=Payment)
+def debit_credit_vendor_wallet(sender, instance, created, **kwargs):
+    '''Debit/credit vendor wallet'''
+    if not created:
+        '''only check for debit/credit on update'''
+        if instance.vendor_credited_debited:
+            # vendor has already been credited/debited
+            return
+        else:
+            # check if payment is successful and not already credited/debited
+            if instance.status_code == PaymentStatusCode.SUCCESS.value:
+                # check if payment is credit or debit
+                if instance.payment_type == PaymentType.CREDIT.value:
+                    # it was a cashout... debit vendor wallet
+                    wallet = instance.vendor.wallet
+
+                    wallet.debit_wallet(instance.amount)
+                    instance.vendor_credited_debited = True
+                    instance.save()
+                    pass
+                elif instance.payment_type == 'debit':
+                    # debit vendor wallet
+                    instance.vendor.debit_wallet(instance.amount)
+                # set vendor_credited_debited to True
+                instance.vendor_credited_debited = True
+                instance.save()
+            else:
+                # payment is not successful, do not credit/debit vendor wallet
+                return
+        return

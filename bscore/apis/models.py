@@ -242,11 +242,21 @@ class Payment(models.Model):
     payment_type = models.CharField(max_length=10, choices=ConstList.PAYMENT_TYPE, default=PaymentType.DEBIT.value)
     status = models.CharField(max_length=10, choices=ConstList.PAYMENT_STATUS, default=PaymentStatus.PENDING.value)
     status_code = models.CharField(max_length=10, blank=True, null=True)
+    vendor_credited_debited = models.BooleanField(default=False) # True if vendor has been credited or debited
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
 
     def __str__(self):
-        return f"Payment for Order {self.order.id}: GHC{self.amount}"
+        msg = ''
+        if self.order:
+            msg = f"Payment for Order {self.order.id}"
+        elif self.booking:
+            msg = f"Payment for Booking {self.booking.id}"
+        elif self.subscription:
+            msg = f"Payment for Subscription {self.subscription.id}"
+        else:
+            msg = f"Payment for User {self.user.name}"
+        return  f'{self.payment_id} - ' + msg
     
 

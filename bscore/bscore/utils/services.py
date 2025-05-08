@@ -3,10 +3,18 @@ import decimal
 import random
 import string
 import time
+import uuid
 
 import requests
+from rest_framework import status
+from rest_framework.response import Response
 
+
+from accounts.models import Vendor
+from apis.models import Payment
+from apis.serializers import PaymentSerializer
 from bscore import settings
+from bscore.utils.const import PaymentMethod, PaymentType
 
 
 def send_sms(message: str, recipients: array.array, sender: str = settings.SENDER_ID):
@@ -28,7 +36,6 @@ def send_sms(message: str, recipients: array.array, sender: str = settings.SENDE
         print(response.json())
         return response.json()
     
-
 
 def collect_funds(data):
     '''To collect funds from user's momo' - debit user's account'''
@@ -71,23 +78,9 @@ def get_transaction_status(transaction_id):
     return response_data
 
 
-def credit_user_wallet(user, amount):
-    '''Credit user's wallet'''
-    user.wallet.credit_wallet(decimal.Decimal(amount))
-    return
-
-
-def debit_user_wallet(user, amount):
-    '''Debit user's wallet'''
-    user.wallet.debit_wallet(decimal.Decimal(amount))
-    return
-
-
 def generate_transaction_id():
     '''Generate a unique transaction id'''
-    pre = 'vttid'  # (vttid) : value transfer transaction id
-    post = str(int(time.time() * 100000))[4:-1]
-    return pre + post
+    return uuid.uuid4().hex[:14]
 
 
 def generate_otp():
@@ -97,123 +90,178 @@ def generate_otp():
     return ''.join(random.choice(chars) for _ in range(size))
 
 
-def can_cashout(request, user: None, amount: decimal.Decimal):
-    '''
-        checks if the user can cashout: account is > 0 and account is > cashout amount.
-        parse [user] in case of a ussd request since they are not autheticated.
-    '''
-    user_wallet = request.user.wallet if user is None else user.wallet
-    return user_wallet.can_transfer_funds(amount)  # if funds is more than 0
-
-
-def has_enough_balance(request, amount) -> bool:
-    '''checks if the user has enough balance to topup'''
+def can_cashout(request, amount: float = 0.0):
+    '''Check if vendor can cashout'''
     user = request.user
-    wallet = user.wallet
-    amount = round(float(request.data.get('amount', "0")), 2)
-    enough_balance = wallet.get_vt_balance() > amount  # if funds is more than amount
-    if enough_balance:
-        return True
-    return False
+    vendor = Vendor.objects.filter(user=user).first()
+    if not vendor:
+        return False
+    wallet = vendor.get_wallet()
+    if not wallet:
+        return False
+    if (wallet.balance < settings.MIN_CASHOUT_AMOUNT) or (wallet.balance < amount):
+        return False
+    return True
+
+def get_payment_amount(request, cashout: bool = False):
+    '''get the amount to be paid'''
+    order = request.data.get('order', None)
+    booking = request.data.get('booking', None)
+    subscription = request.data.get('subscription', None)
+    if order:
+        amount = order.get('amount', None)
+    elif booking:
+        amount = booking.get('amount', None)
+    elif subscription:
+        amount = subscription.get('amount', None)
+    else:
+        if cashout:
+            # if it's a cashout, get the amount from the request data
+            amount = request.data.get('amount', None)
+        else:
+            return {
+                "message": "Order or booking or subscription is required",
+                "api_status": status.HTTP_400_BAD_REQUEST
+            }
+    if amount is None:
+        return {
+            "message": "Amount is required",
+            "api_status": status.HTTP_400_BAD_REQUEST
+        }
+    try:
+        amount = decimal.Decimal(amount)
+    except decimal.InvalidOperation:
+        return {
+            "message": "Invalid amount",
+            "api_status": status.HTTP_400_BAD_REQUEST
+        }
+    if amount <= 0:
+        return {
+            "message": "Amount must be greater than 0",
+            "api_status": status.HTTP_400_BAD_REQUEST
+        }
+    return {
+        "amount": amount,
+        "api_status": status.HTTP_200_OK
+    }
 
 
-def execute_momo_transaction(request, type, user: None):
+
+def execute_momo_transaction(request, type, user: None, order: None, booking: None, subscription: None, vendor: None, withdrawal: False):
     '''
         Dusburse to or collect from user's momo.
         Parse [user] in case of a ussd request since it's not authenticated.
     '''
+    if not withdrawal and (order is None and booking is None and subscription is None):
+        # require order or booking or subscription only if not a withdrawal
+        # this is because a withdrawal does not require an order or booking or subscription
+        return {
+            "transaction_status": "failed",
+            "message": "Order or booking or subscription is required",
+            "api_status": 400
+        }
     user = request.user if user is None else user
-    wallet = user.wallet
+    if vendor is None:
+        return {
+            "transaction_status": "failed",
+            "message": "User is not a vendor",
+            "api_status": 400
+        }
+    # check if vendor has a wallet
+    if vendor.get_wallet() is None:
+        return {
+            "transaction_status": "failed",
+            "message": "User does not have a wallet",
+            "api_status": 400
+        }
+    wallet = vendor.get_wallet()
     amount = request.data.get('amount')
     account_provider = request.data.get('network')
-    reference = request.data.get('reference')
     phone = request.data.get('phone')
 
-    # simulate returning a response
-    return {
-        "transaction_status": "success",
-        "message": "Transaction is successful",
-        "transaction": {
-            "transaction_id": "1234567890",
-            "status_code": "00",
-            "status_message": "Transaction successful",
-            "transaction_type": type,
-            "destination_account": phone,
-            "source_account": wallet.wallet_id,
-            "destination_wallet": settings.PAYHUB_WALLET_ID,
-            "source_wallet": wallet.wallet_id,
-            "amount": amount,
-            "reference": reference,
-            "account_provider": account_provider,
-        },
-        "api_status": 200
+    print("generating transaction id")
+    transaction_id = generate_transaction_id()  # generate a unique transaction id
+    data = {
+        'transaction_id': transaction_id,
+        'mobile_number': phone,
+        'amount': amount,
+        'wallet_id': settings.PAYHUB_WALLET_ID,
+        'network_code': account_provider,
     }
-    # print("generating transaction id")
-    # transaction_id = generate_transaction_id()  # generate a unique transaction id
-    # data = {
-    #     'transaction_id': transaction_id,
-    #     'mobile_number': "",  # noqa
-    #     'amount': amount,
-    #     'wallet_id': settings.PAYHUB_WALLET_ID,
-    #     'network_code': account_provider,
-    # }
 
-    # print("Disbursing or collecting funds")
-    # # disburse or collect funds: depending on transaction type
-    # if type == TransactionType.CASHOUT_VT.value:
-    #     disburse_funds(data)  # disburse funds to user's momo
-    # elif type == TransactionType.TOPUP_VT.value:
-    #     collect_funds(data)
-    # else:
-    #     return Response({"message": "Invalid transaction type"}, status=status.HTTP_404_NOT_FOUND)
+    print("Disbursing or collecting funds")
+    # disburse or collect funds: depending on transaction type
+    if type == PaymentType.CREDIT.value:
+        disburse_funds(data)  # disburse funds to user / credit user's account
+    elif type == PaymentType.DEBIT.value:
+        collect_funds(data) # collect funds from user / debit user's account
+    else:
+        return Response({"message": "Invalid transaction type"}, status=status.HTTP_404_NOT_FOUND)
 
-    # print("Checking transaction status")
-    # transaction_is_successful = False  # flag to check if transaction was successful
-    # # wait for 60 seconds: check status every 5 seconds
-    # for i in range(12):
-    #     time.sleep(5)
-    #     transaction_status = get_transaction_status(transaction_id)  # noqa
-    #     if transaction_status['success'] == True:
-    #         transaction_is_successful = True
-    #         break
+    print("Checking transaction status")
+    transaction_is_successful = False
+    # wait for 60 seconds: check status every 5 seconds
+    for i in range(12):
+        time.sleep(5)
+        transaction_status = get_transaction_status(transaction_id)  # noqa
+        if transaction_status['success'] == True:
+            transaction_is_successful = True
+            break
 
-    # print("Creating transaction")
-    # transaction = {
-    #     'transaction_id': data.get('transaction_id'),
-    #     'status_code': transaction_status['status_code'],
-    #     'status_message': transaction_status['message'],
-    #     'transaction_type': type,
-    #     'destination_account': destination_account,
-    #     'source_account': source_account,
-    #     'destination_wallet': destination_wallet,
-    #     'source_wallet': source_wallet,
-    #     'amount': amount,
-    #     'reference': reference,
-    #     'account_provider': account_provider,
-    # }
+    print("Creating transaction")
+    transaction = {
+        'payment_id': data.get('transaction_id'),
+        'status_code': transaction_status['status_code'],
+        'status': transaction_status['message'],
+        'order': order,
+        'vendor': vendor,
+        'booking': booking,
+        'subscription': subscription,
+        'user': user,
+        'reason': 'Birthnon Payments',
+        'payment_method': PaymentMethod.MOMO.value,
+        'payment_type': type,
+        'amount': amount,
+    }
 
-    # transaction = Transaction.objects.create(**transaction)
-    # serializer = TransactionSerializer(transaction, many=False)
+    transaction = Payment.objects.create(**transaction)
+    serializer = PaymentSerializer(transaction, many=False)
 
-    # print("Debiting or crediting user wallet")
-    # if transaction_is_successful:
-    #     # debit or credit user wallet: depending on transaction type
-    #     if type == TransactionType.CASHOUT_VT.value:
-    #         debit_user_wallet(user, amount)
-    #     elif type == TransactionType.TOPUP_VT.value:
-    #         credit_user_wallet(user, amount)
-    #     else:
-    #         print("CAN'T DETECT TRANSACTION TYPE")
-    #     return {
-    #         "transaction_status": "success",
-    #         "message": "Transaction is successful",
-    #         "transaction": serializer.data,
-    #         "api_status": status.HTTP_200_OK
-    #     }
-    # else:
-    #     return {
-    #         "transaction_status": "pending",
-    #         "message": "Transaction is processing",
-    #         "transaction": serializer.data,
-    #         "api_status": status.HTTP_201_CREATED
-    #     }
+    print("Debiting or crediting user wallet")
+    if transaction_is_successful:
+        # debit or credit user wallet: depending on transaction type
+        if type == PaymentType.CREDIT.value:
+            # it means the vendor did a cashout
+            # debit vendor wallet
+            success = wallet.debit_wallet(amount)
+            if success:
+                transaction.vendor_credited_debited = True
+                transaction.save()
+            # else:
+            #     return {
+            #         "transaction_status": "failed",
+            #         "message": "Insufficient funds in wallet",
+            #         "transaction": serializer.data,
+            #         "api_status": status.HTTP_400_BAD_REQUEST
+            #     }
+        elif type == PaymentType.DEBIT.value:
+            # it means a client paid for a service/product/order
+            # credit vendor wallet
+            wallet.credit_wallet(amount)
+            transaction.vendor_credited_debited = True
+            transaction.save()
+        else:
+            print("CAN'T DETECT TRANSACTION TYPE")
+        return {
+            "transaction_status": "success",
+            "message": "Transaction is successful",
+            "transaction": serializer.data,
+            "api_status": status.HTTP_200_OK
+        }
+    else:
+        return {
+            "transaction_status": "pending",
+            "message": "Transaction is processing",
+            "transaction": serializer.data,
+            "api_status": status.HTTP_201_CREATED
+        }
