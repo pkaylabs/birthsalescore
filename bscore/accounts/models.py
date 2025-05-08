@@ -7,6 +7,7 @@ and their otp information.
 '''
 
 import datetime
+import decimal
 import random
 import string
 from datetime import timedelta
@@ -202,14 +203,14 @@ class Wallet(models.Model):
 
     def credit_wallet(self, amount: float) -> None:
         '''Credit the wallet with the given amount'''
-        self.balance += amount
+        self.balance += decimal.Decimal(amount)
         self.save()
         return
     
     def debit_wallet(self, amount: float) -> None:
         '''Debit the wallet with the given amount'''
-        if self.balance >= amount:
-            self.balance -= amount
+        if self.balance >= decimal.Decimal(amount):
+            self.balance -= decimal.Decimal(amount)
             self.save()
             return True
         else:
