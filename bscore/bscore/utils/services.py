@@ -103,17 +103,14 @@ def can_cashout(request, amount: float = 0.0):
         return False
     return True
 
-def get_payment_amount(request, cashout: bool = False):
+def get_payment_amount(request, cashout: bool = False, subscription = None, order = None, booking = None):
     '''get the amount to be paid'''
-    order = request.data.get('order', None)
-    booking = request.data.get('booking', None)
-    subscription = request.data.get('subscription', None)
     if order:
         amount = order.get('amount', None)
     elif booking:
         amount = booking.get('amount', None)
     elif subscription:
-        amount = subscription.get('amount', None)
+        amount = subscription.package.package_price
     else:
         if cashout:
             # if it's a cashout, get the amount from the request data
@@ -147,7 +144,7 @@ def get_payment_amount(request, cashout: bool = False):
 
 
 
-def execute_momo_transaction(request, type, user: None, order: None, booking: None, subscription: None, vendor: None, withdrawal: False):
+def execute_momo_transaction(request, type, user=None, order=None, booking=None, subscription=None, vendor=None, withdrawal=False):
     '''
         Dusburse to or collect from user's momo.
         Parse [user] in case of a ussd request since it's not authenticated.
@@ -174,8 +171,16 @@ def execute_momo_transaction(request, type, user: None, order: None, booking: No
             "message": "User does not have a wallet",
             "api_status": 400
         }
+    print("Before wallet = vendor.get_wallet()")
     wallet = vendor.get_wallet()
-    amount = request.data.get('amount')
+    amount_res = get_payment_amount(request=request, cashout=withdrawal, subscription=subscription, order=order, booking=booking)
+    if amount_res.get('api_status') != status.HTTP_200_OK:
+        return {
+            "transaction_status": "failed",
+            "message": amount_res.get('message'),
+            "api_status": amount_res.get('api_status')
+        }
+    amount = amount_res.get('amount')
     account_provider = request.data.get('network')
     phone = request.data.get('phone')
 
@@ -237,13 +242,6 @@ def execute_momo_transaction(request, type, user: None, order: None, booking: No
             if success:
                 transaction.vendor_credited_debited = True
                 transaction.save()
-            # else:
-            #     return {
-            #         "transaction_status": "failed",
-            #         "message": "Insufficient funds in wallet",
-            #         "transaction": serializer.data,
-            #         "api_status": status.HTTP_400_BAD_REQUEST
-            #     }
         elif type == PaymentType.DEBIT.value:
             # it means a client paid for a service/product/order
             # credit vendor wallet
