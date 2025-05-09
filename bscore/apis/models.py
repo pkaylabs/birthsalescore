@@ -29,7 +29,7 @@ class Product(models.Model):
     category = models.ForeignKey(ProductCategory, on_delete=models.CASCADE, related_name='products')
     in_stock = models.BooleanField(default=True)
     is_published = models.BooleanField(default=False)
-    vendor = models.ForeignKey(Vendor, on_delete=models.CASCADE, related_name='products')
+    vendor = models.ForeignKey(Vendor, on_delete=models.CASCADE, related_name='products', null=True, blank=True)
     image = models.ImageField(upload_to='products/', blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
