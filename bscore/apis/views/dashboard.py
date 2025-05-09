@@ -5,6 +5,7 @@ from rest_framework.views import APIView
 
 from accounts.models import User, Vendor, Wallet
 from apis.models import Order, Payment, Product
+from apis.serializers import PaymentSerializer
 from bscore.utils.const import UserType
 from bscore.utils.permissions import (IsAdminOnly, IsEliteVendorOnly,
                                       IsSuperuserOnly)
@@ -53,7 +54,7 @@ class DashboardAPIView(APIView):
                 "balance": balance,
                 "users": users,
                 "orders": orders,
-                "latest_transactions": payments,
+                "latest_transactions": PaymentSerializer(payments, many=True).data,
                 "sales_today": sales_today
             }
         
