@@ -247,6 +247,26 @@ class Payment(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
 
+    @property
+    def what_was_paid_for(self) -> str:
+        '''check if payment was for an order, subscription or booking'''
+        if self.order:
+            return "Payment for Order"
+        elif self.booking:
+            return "Payment for Booking"
+        elif self.subscription:
+            return "Payment for Subscription"
+        else:
+            return "None"
+        
+    @property
+    def customer_name(self) -> str:
+        '''get customer name'''
+        if self.user:
+            return self.user.name
+        return "None"
+
+
     def __str__(self):
         msg = ''
         if self.order:

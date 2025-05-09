@@ -187,6 +187,8 @@ class AdImageSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class PaymentSerializer(serializers.ModelSerializer):
+    customer_name = serializers.ReadOnlyField()
+    what_was_paid_for = serializers.ReadOnlyField()
     class Meta:
         model = Payment
         fields = '__all__'
