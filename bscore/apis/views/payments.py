@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.models import Subscription, Vendor
-from apis.models import Payment
+from apis.models import Order, Payment, ServiceBooking
 from apis.serializers import PaymentSerializer
 from bscore.utils.const import PaymentType, UserType
 from bscore.utils.permissions import allow_domains
@@ -88,9 +88,19 @@ class MakePaymentAPI(APIView):
                 Q(user__is_superuser=True)
                 ).first()
         elif order:
+            order = Order.objects.filter(id=order).first()
+            if order is None:
+                return Response({
+                    "message": "Order not found",
+                }, status=status.HTTP_400_BAD_REQUEST)
             vendor = Vendor.objects.filter(
                 vendor_id=order.vendor_id()).first()
         elif booking:
+            booking = ServiceBooking.objects.filter(id=booking).first()
+            if booking is None:
+                return Response({
+                    "message": "Booking not found",
+                }, status=status.HTTP_400_BAD_REQUEST)
             vendor = booking.service.vendor
         if vendor is None:
             return Response({
