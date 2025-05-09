@@ -23,7 +23,7 @@ class ProductAPIView(APIView):
         if user.is_superuser or user.user_type == UserType.ADMIN.value:
             products = Product.objects.all().order_by('-created_at')
         elif user.user_type == UserType.VENDOR.value:
-            products = Product.objects.filter(vendor=user.vendor_profile).order_by('-created_at')
+            products = Product.objects.filter(vendor__vendor_id=user.vendor_profile['vendor_id']).order_by('-created_at')
         else:
             products = Product.objects.filter(is_active=True).order_by('-created_at')
 
