@@ -115,6 +115,7 @@ class OrderSerializer(serializers.ModelSerializer):
     payment_status = serializers.ReadOnlyField()
     total_price = serializers.ReadOnlyField()
     vendor_id = serializers.ReadOnlyField()
+    customer_name = serializers.ReadOnlyField()
     class Meta:
         model = Order
         fields = '__all__'

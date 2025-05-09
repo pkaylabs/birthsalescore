@@ -110,6 +110,13 @@ class Order(models.Model):
     def vendor_id(self) -> str:
         item = self.items.first()
         return item.product.vendor.vendor_id if item else "None"
+    
+    @property
+    def customer_name(self) -> str:
+        '''get customer name'''
+        if self.user:
+            return self.user.name
+        return "None"
 
     def __str__(self):
         return f"Order {self.id} for {self.user.name}"    
