@@ -105,9 +105,9 @@ def can_cashout(request, amount: float = 0.0):
 def get_payment_amount(request, cashout: bool = False, subscription = None, order = None, booking = None):
     '''get the amount to be paid'''
     if order:
-        amount = order.get('amount', None)
+        amount = order.total_price()
     elif booking:
-        amount = booking.get('amount', None)
+        amount = booking.service.price
     elif subscription:
         amount = subscription.package.package_price
     else:
