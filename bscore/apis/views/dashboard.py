@@ -2,6 +2,7 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from django.db.models import Q
 
 from accounts.models import User, Vendor, Wallet
 from apis.models import Order, Payment, Product
@@ -36,7 +37,9 @@ class DashboardAPIView(APIView):
             )])
             balance = wallet.balance
             users = 1
-            payments = Payment.objects.filter(vendor=vendor).order_by('-created_at')[:5]
+            payments = Payment.objects.filter(
+                Q(vendor=vendor) | Q(user=user),
+            ).order_by('-created_at')[:5]
         else:
             users = User.objects.count()
             products = Product.objects.count()
