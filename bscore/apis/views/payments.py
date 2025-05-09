@@ -94,7 +94,7 @@ class MakePaymentAPI(APIView):
                     "message": "Order not found",
                 }, status=status.HTTP_400_BAD_REQUEST)
             vendor = Vendor.objects.filter(
-                vendor_id=order.vendor_id()).first()
+                vendor_id=order.vendor_id).first()
         elif booking:
             booking = ServiceBooking.objects.filter(id=booking).first()
             if booking is None:
