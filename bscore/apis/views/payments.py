@@ -87,10 +87,15 @@ class MakePaymentAPI(APIView):
                 Q(vendor_name__icontains='Birthnon Services'), 
                 Q(user__is_superuser=True)
                 ).first()
-            if vendor is None:
-                return Response({
-                    "message": "Vendor not found",
-                }, status=status.HTTP_400_BAD_REQUEST)
+        elif order:
+            vendor = Vendor.objects.filter(
+                vendor_id=order.vendor_id()).first()
+        elif booking:
+            vendor = booking.service.vendor
+        if vendor is None:
+            return Response({
+                "message": "Vendor not found",
+            }, status=status.HTTP_400_BAD_REQUEST)
         try:
             response = execute_momo_transaction(
                 request=request, 
