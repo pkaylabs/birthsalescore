@@ -263,11 +263,52 @@ class BookingsAPIView(APIView):
             # vendors get to see only the bookings for their services
             vendor = Vendor.objects.filter(user=user).first()
             bookings = ServiceBooking.objects.filter(service__vendor=vendor).order_by('-created_at')
+        elif user.user_type == UserType.CUSTOMER.value:
+            # customers get to see only their bookings
+            bookings = ServiceBooking.objects.filter(user=user).order_by('-created_at')
         else:
             # any other user type sees empty list for now.
             bookings = ServiceBooking.objects.none()
         serializer = ServiceBookingSerializer(bookings, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    def put(self, request, *args, **kwargs):
+        '''update a booking'''
+        user = request.user
+        booking_id = request.data.get('booking')
+        if user.is_superuser or user.is_staff or user.user_type == UserType.ADMIN.value:
+            booking = ServiceBooking.objects.filter(id=booking_id).first()
+        else:
+            vendor = Vendor.objects.filter(user=user).first()
+            booking = ServiceBooking.objects.filter(service__vendor=vendor, id=booking_id).first()
+        print("Booking ID: ", booking_id)
+        print("Booking: ", booking)
+        if booking is None:
+            return Response({"error": "Booking not found"}, status=status.HTTP_404_NOT_FOUND)
+        
+        serializer = ServiceBookingSerializer(booking, data=request.data, partial=True)
+        if serializer.is_valid():
+            booking = serializer.save()
+            return Response({
+                "message": "Booking updated successfully",
+                "data": ServiceBookingSerializer(booking).data
+            }, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    def post(self, request, *args, **kwargs):
+        '''create/book a new service'''
+        user = request.user
+        req_data = request.data.copy()
+        req_data['user'] = user.id
+        serializer = ServiceBookingSerializer(data=req_data)
+
+        if serializer.is_valid():
+            booking = serializer.save()
+            return Response({
+                "message": "Booking created successfully",
+                "data": ServiceBookingSerializer(booking).data
+            }, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
 class PlaceOrderAPIView(APIView):
     '''Endpoint to place an order'''
@@ -284,3 +325,5 @@ class PlaceOrderAPIView(APIView):
             order = serializer.save()
             return Response({ "message": "Order Placed Successfully",  "data": OrderSerializer(order).data}, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+
