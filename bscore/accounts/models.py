@@ -48,6 +48,7 @@ class User(AbstractBaseUser, PermissionsMixin):
         if self.user_type != UserType.VENDOR.value:
             return None
         vendor = Vendor.objects.filter(user=self).first()
+        subscription = Subscription.objects.filter(vendor=vendor).order_by('-created_at').first()
         if vendor:
             return {
                 'vendor_id': vendor.vendor_id,
@@ -55,7 +56,7 @@ class User(AbstractBaseUser, PermissionsMixin):
                 'vendor_phone': vendor.vendor_phone,
                 'vendor_email': vendor.vendor_email,
                 'vendor_address': vendor.vendor_address,
-                'subscription': vendor.subscription.package_name if vendor.subscription else None,
+                'subscription': subscription.package_name if subscription else None,
                 'created_at': vendor.created_at,
             }
         return None
