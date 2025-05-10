@@ -43,7 +43,7 @@ class VendorCashoutAPI(APIView):
                 "message": "Amount is required",
             }, status=status.HTTP_400_BAD_REQUEST)
         if can_cashout(request, amount):
-            vendor = user.get_vendor()
+            vendor = Vendor.objects.filter(user=user).first()
             try:
                 response = execute_momo_transaction(
                     request=request, type=PaymentType.CREDIT.value, 

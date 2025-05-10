@@ -9,7 +9,7 @@ import requests
 from rest_framework import status
 from rest_framework.response import Response
 
-from accounts.models import Vendor
+from accounts.models import Vendor, Wallet
 from apis.models import Payment
 from apis.serializers import PaymentSerializer
 from bscore import settings
@@ -95,10 +95,10 @@ def can_cashout(request, amount: float = 0.0):
     vendor = Vendor.objects.filter(user=user).first()
     if not vendor:
         return False
-    wallet = vendor.get_wallet()
+    wallet = Wallet.objects.filter(vendor=vendor).first()
     if not wallet:
         return False
-    if (wallet.balance < settings.MIN_CASHOUT_AMOUNT) or (wallet.balance < amount):
+    if (wallet.balance < decimal.Decimal(settings.MIN_CASHOUT_AMOUNT)) or (wallet.balance < decimal.Decimal(amount)):
         return False
     return True
 
