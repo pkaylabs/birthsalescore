@@ -35,7 +35,7 @@ class DashboardAPIView(APIView):
                 created_at__gte=start_of_day,
                 created_at__lt=end_of_day
             )])
-            balance = wallet.balance
+            balance = wallet.balance if wallet else 0
             users = 1
             payments = Payment.objects.filter(
                 Q(vendor=vendor) | Q(user=user),
