@@ -123,18 +123,25 @@ class Vendor(models.Model):
         wallet = Wallet.objects.filter(vendor=self).first()
         return wallet
     
-    def can_create_product(self) -> bool:
+    def can_create_or_view_product(self) -> bool:
         '''Check if the vendor can create a product'''
         subscription = Subscription.objects.filter(vendor=self).order_by('-created_at').first()
         if subscription:
             return subscription.package.can_create_product
         return False
     
-    def can_create_service(self) -> bool:
+    def can_create_or_view_service(self) -> bool:
         '''Check if the vendor can create a service'''
         subscription = Subscription.objects.filter(vendor=self).order_by('-created_at').first()
         if subscription:
             return subscription.package.can_create_service
+        return False
+    
+    def has_active_subscription(self) -> bool:
+        '''Check if the vendor has an active subscription'''
+        subscription = Subscription.objects.filter(vendor=self).order_by('-created_at').first()
+        if subscription:
+            return not subscription.expired
         return False
 
     def __str__(self):

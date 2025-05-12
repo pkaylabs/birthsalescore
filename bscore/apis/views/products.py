@@ -23,7 +23,11 @@ class ProductAPIView(APIView):
         if user.is_superuser or user.user_type == UserType.ADMIN.value:
             products = Product.objects.all().order_by('-created_at')
         elif user.user_type == UserType.VENDOR.value:
-            products = Product.objects.filter(vendor__vendor_id=user.vendor_profile['vendor_id']).order_by('-created_at')
+            vendor = Vendor.objects.filter(user=user).first()
+            if vendor and vendor.has_active_subscription() and vendor.can_create_or_view_product():
+                products = Product.objects.filter(vendor__vendor_id=user.vendor_profile['vendor_id']).order_by('-created_at')
+            else:
+                return Response({"message": "Vendor profile not found or subscription expired"}, status=status.HTTP_400_BAD_REQUEST)
         else:
             products = Product.objects.filter(is_active=True).order_by('-created_at')
 
@@ -33,14 +37,14 @@ class ProductAPIView(APIView):
     def post(self, request, *args, **kwargs):
         '''Create a new product''' 
         user = request.user
-        # if user.user_type != UserType.VENDOR.value :
-        #     return Response({"message": "Only vendors can add products"}, status=status.HTTP_403_FORBIDDEN)
         vendor = Vendor.objects.filter(user=user).first()
         if user.is_superuser or user.is_staff or user.user_type == UserType.ADMIN.value:
             vendor_id = request.POST.get('vendor')
             if vendor_id:
                 vendor = Vendor.objects.filter(id=vendor_id).first()
-        
+        # check if vendor has active subscription and can create or view product
+        if not (vendor and vendor.has_active_subscription() and vendor.can_create_or_view_product()):
+            return Response({"message": "Vendor profile not found or subscription expired"}, status=status.HTTP_400_BAD_REQUEST)
         serializer = ProductSerializer(data=request.data)
         if serializer.is_valid():
             if vendor:
@@ -59,6 +63,9 @@ class ProductAPIView(APIView):
         if user.is_superuser or user.is_staff or user.user_type == UserType.ADMIN.value:
            product = Product.objects.filter(id=product_id).first()
         else:
+            # check if vendor has active subscription and can create or view product
+            if not (vendor and vendor.has_active_subscription() and vendor.can_create_or_view_product()):
+                return Response({"message": "Vendor profile not found or subscription expired"}, status=status.HTTP_400_BAD_REQUEST)
             product = Product.objects.filter(id=product_id, vendor=vendor).first()
 
         if not product:
@@ -78,6 +85,9 @@ class ProductAPIView(APIView):
         if user.is_superuser or user.is_staff or user.user_type == UserType.ADMIN.value:
             product = Product.objects.filter(id=product_id).first()
         else:
+            # check if vendor has active subscription and can create or view product
+            if not (vendor and vendor.has_active_subscription() and vendor.can_create_or_view_product()):
+                return Response({"message": "Vendor profile not found or subscription expired"}, status=status.HTTP_400_BAD_REQUEST)
             product = Product.objects.filter(id=product_id, vendor=vendor).first()
 
         if not product:
@@ -96,20 +106,24 @@ class CustomersProductAPIView(APIView):
         '''Get all products for customers'''
         query = request.query_params.get('query', None)
         if query and query.isdigit():
-            # filter products based on query
-            products = Product.objects.filter(is_published=True, id=query).first()
+            # filter products based on query | exclude vendors with no active subscription
+            products = Product.objects.filter(is_published=True)
+            product_ids = [
+                product.id for product in products if product.vendor.has_active_subscription() and product.vendor.can_create_or_view_product()
+            ]
+            products = Product.objects.filter(id__in=product_ids).first()
             many = False
         else:
             # get all products
-            products = Product.objects.filter(is_published=True).order_by('-created_at')
+            products = Product.objects.filter(is_published=True)
+            product_ids = [
+                product.id for product in products if product.vendor.has_active_subscription() and product.vendor.can_create_or_view_product()
+            ]
+            products = Product.objects.filter(id__in=product_ids).order_by('-created_at')
             many = True
         if query and not products:
             return Response({"message": "No products found"}, status=status.HTTP_404_NOT_FOUND)
-        if query and products:
-            serializer = ProductSerializer(products, many=False)
-            return Response(serializer.data, status=status.HTTP_200_OK)
-        # filter products based on query
-        serializer = ProductSerializer(products, many=True)
+        serializer = ProductSerializer(products, many=many)
         return Response(serializer.data, status=status.HTTP_200_OK)
     
 class ProductSearchAPIView(APIView):
