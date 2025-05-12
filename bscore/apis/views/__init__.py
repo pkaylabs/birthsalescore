@@ -4,3 +4,4 @@ from .dashboard import *
 from .main import *
 from .payments import *
 from .products import *
+from .banner import *
