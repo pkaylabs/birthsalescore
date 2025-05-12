@@ -223,7 +223,19 @@ class ServicesAPIView(APIView):
 
     def get(self, request, *args,**kwargs):
         '''gets available services'''
-        services = Service.objects.all().order_by('-created_at')
+        user = request.user
+        if user.is_superuser or user.is_staff or user.user_type == UserType.ADMIN.value:
+            # admin users get to see all services
+            services = Service.objects.all().order_by('-created_at')
+        elif user.user_type == UserType.VENDOR.value:
+            # vendors get to see only their services
+            vendor = Vendor.objects.filter(user=user).first()
+            if vendor and vendor.has_active_subscription() and vendor.can_create_or_view_product():
+                services = Service.objects.filter(vendor=vendor).order_by('-created_at')
+            else:
+                return Response({"message": "Vendor profile not found or subscription expired"}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            services = Service.objects.none()
         serializer = ServiceSerializer(services, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
     
@@ -235,8 +247,10 @@ class ServicesAPIView(APIView):
         if vendor_id and not vendor:
             vendor = Vendor.objects.filter(vendor_id=vendor_id).first()
         
-        if not vendor:
-            return Response({"error": "A vendor profile is required"}, status=status.HTTP_400_BAD_REQUEST)
+        # if not vendor:
+        #     return Response({"error": "A vendor profile is required"}, status=status.HTTP_400_BAD_REQUEST)
+        if not (vendor and vendor.has_active_subscription() and vendor.can_create_or_view_product()):
+            return Response({"message": "Vendor profile not found or subscription expired"}, status=status.HTTP_400_BAD_REQUEST)
         
         serializer = ServiceSerializer(data=request.data)
 
@@ -254,7 +268,10 @@ class ServicesAPIView(APIView):
             service = Service.objects.filter(id=service_id).first()
         else:
             vendor = Vendor.objects.filter(user=user).first()
-            service = Service.objects.filter(vendor=vendor, id=service_id).first()
+            if vendor and vendor.has_active_subscription() and vendor.can_create_or_view_product():
+                service = Service.objects.filter(vendor=vendor, id=service_id).first()
+            else:
+                return Response({"message": "Vendor profile not found or subscription expired"}, status=status.HTTP_400_BAD_REQUEST)
         
         if not service:
             return Response({"error": "Service not found"}, status=status.HTTP_404_NOT_FOUND)
