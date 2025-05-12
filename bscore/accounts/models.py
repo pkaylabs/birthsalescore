@@ -122,6 +122,20 @@ class Vendor(models.Model):
         '''Get the wallet for the vendor'''
         wallet = Wallet.objects.filter(vendor=self).first()
         return wallet
+    
+    def can_create_product(self) -> bool:
+        '''Check if the vendor can create a product'''
+        subscription = Subscription.objects.filter(vendor=self).order_by('-created_at').first()
+        if subscription:
+            return subscription.package.can_create_product
+        return False
+    
+    def can_create_service(self) -> bool:
+        '''Check if the vendor can create a service'''
+        subscription = Subscription.objects.filter(vendor=self).order_by('-created_at').first()
+        if subscription:
+            return subscription.package.can_create_service
+        return False
 
     def __str__(self):
         return self.vendor_name + ' - ' + self.user.name if self.user else self.vendor_id
@@ -132,6 +146,8 @@ class SubscriptionPackage(models.Model):
     package_name = models.CharField(max_length=255)
     package_description = models.TextField()
     package_price = models.DecimalField(max_digits=10, decimal_places=2)
+    can_create_product = models.BooleanField(default=False)
+    can_create_service = models.BooleanField(default=False)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
