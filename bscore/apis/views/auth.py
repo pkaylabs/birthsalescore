@@ -47,15 +47,21 @@ class LoginAPI(APIView):
 
 class VerifyOTPAPI(APIView):
     '''Verify OTP api endpoint'''
-    permission_classes = (permissions.IsAuthenticated,)
+    permission_classes = (permissions.AllowAny,)
 
     def get(self, request, *args, **kwargs):
         '''Use this endpoint to send OTP to the user'''
-        user = request.user
-        phone = user.phone
+        phone = request.query_params.get('phone')
+        if not phone:
+            return Response({'error': 'Phone number is required'}, status=status.HTTP_400_BAD_REQUEST)
         code = random.randint(1000, 9999)
         try:
-            OTP.objects.filter(phone=phone).delete()
+            existingotp = OTP.objects.filter(phone=phone).first()
+            if existingotp:
+                existingotp.delete()
+            user = User.objects.filter(phone=phone).first()
+            if not user:
+                return Response({'error': 'User account not found'}, status=status.HTTP_404_NOT_FOUND)
             otp = OTP.objects.create(phone=phone, otp=code)
             otp.send_otp()
         except Exception as e:
@@ -63,11 +69,15 @@ class VerifyOTPAPI(APIView):
         return Response({'message': 'OTP sent successfully'}, status=status.HTTP_200_OK)
 
     def post(self, request, *args, **kwargs):
-        user = request.user
-        phone = user.phone
         otp = request.data.get('otp')
+        phone = request.data.get('phone')
+        user = User.objects.filter(phone=phone).first()
+        if not user:
+            return Response({'error': 'User account not found'}, status=status.HTTP_404_NOT_FOUND)
+        if not phone:
+            return Response({'error': 'Phone number is required'}, status=status.HTTP_400_BAD_REQUEST)
         if not otp:
-            return Response({'error': 'OTP is required'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'Code is required'}, status=status.HTTP_400_BAD_REQUEST)
         otp = OTP.objects.filter(phone=phone, otp=otp).first()
         if not otp:
             return Response({'error': 'Invalid OTP'}, status=status.HTTP_400_BAD_REQUEST)
