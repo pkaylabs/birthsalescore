@@ -111,7 +111,21 @@ class VendorProfileAPIView(APIView):
             user.save()
             return Response({"message": "Vendor registered successfully", "vendor": serializer.data}, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
 
+    def put(self, request, *args, **kwargs):
+        '''Update a vendor profile - for vendors'''
+        user = request.user
+        vendor = Vendor.objects.filter(user=user).first()
+        if not vendor:
+            return Response({"message": "Vendor profile not found"}, status=status.HTTP_404_NOT_FOUND)
+        # if vendor profile already exists, update it with the new data
+        serializer = VendorSerializer(vendor, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({"message": "Vendor profile updated successfully", "vendor": serializer.data}, status=status.HTTP_200_OK)
+        return Response({"error": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+       
 
 class SubscriptionAPIView(APIView):
     '''API Endpoints for Subscriptions'''
