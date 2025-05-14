@@ -3,6 +3,7 @@ from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+import datetime
 from accounts.models import Subscription, Vendor
 from apis.models import Order, Payment, ServiceBooking
 from apis.serializers import PaymentSerializer
@@ -173,7 +174,7 @@ class SubscriptionRenewalAPIView(APIView):
         if response.get('transaction').get('status_code') == '000':
             # set the start and end date of the subscription
             print('response:', response)
-            subscription.start_date = response.get('transaction').get('created_at')
+            subscription.start_date = datetime.date.today()
             subscription.save()
         return Response(
             {
