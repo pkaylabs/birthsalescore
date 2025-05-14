@@ -4,7 +4,7 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 
 from accounts.models import OTP, User, Vendor
-from apis.models import Payment
+from apis.models import Order, Payment, ServiceBooking
 from bscore.utils.const import PaymentStatusCode, PaymentType, UserType
 
 
@@ -77,3 +77,11 @@ def debit_credit_vendor_wallet(sender, instance, created, **kwargs):
                 # payment is not successful, do not credit/debit vendor wallet
                 return
         return
+
+
+@receiver(post_save, sender=ServiceBooking)
+def notify_vendor_and_customer(sender, instance, created, **kwargs):
+    if created:
+        # notify vendor and customer of new service booking
+        instance.notify_vendor_and_customer()
+    return

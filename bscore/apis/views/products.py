@@ -396,5 +396,7 @@ class PlaceOrderAPIView(APIView):
         serializer = PlaceOrderSerializer(data=req_data)
         if serializer.is_valid():
             order = serializer.save()
+            # notify vendor and customer
+            order.notify_vendor_and_customer()
             return Response({ "message": "Order Placed Successfully",  "data": OrderSerializer(order).data}, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

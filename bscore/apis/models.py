@@ -117,6 +117,19 @@ class Order(models.Model):
         if self.user:
             return self.user.name
         return "None"
+    
+    def notify_vendor_and_customer(self) -> None:
+        '''Send notifications to the vendor and customer'''
+        from bscore.utils.services import send_sms
+        customer_msg = f'Hi, {self.customer_name}.\n\nThank you for shopping with us. We hope to see you soon.\n\nRegards.\nThe Birthnon Team'
+        # notify customer
+        send_sms(customer_msg, [self.user.phone])
+        vendor_msg = f'Dear Vendor,\n\nA customer has placed a new order. Please confirm the order on your dashboard.\n\nRegards.\nThe Birthnon Team'
+        # notify vendor
+        print(f"self.items.all(): {self.items.all()}")
+        print(f"self.items.first(): {self.items.first()}")
+        vendor = self.items.all().first().product.vendor
+        send_sms(vendor_msg, [vendor.vendor_phone])
 
     def __str__(self):
         return f"Order {self.id} for {self.user.name}"    
@@ -222,6 +235,17 @@ class ServiceBooking(models.Model):
     @property
     def vendor_name(self):
         return self.service.vendor.vendor_name
+    
+    def notify_vendor_and_customer(self) -> None:
+        '''Send notifications to the vendor and customer'''
+        from bscore.utils.services import send_sms
+        customer_msg = f'Hi, {self.user_name}.\n\nThank you for booking a service with us. The Service Provider will contact you soon.\n\nRegards.\nThe Birthnon Team'
+        # notify customer
+        send_sms(customer_msg, [self.user.phone])
+        vendor_msg = f'Dear Vendor,\n\nA customer ({self.user.phone}) has booked a new service ({self.service_name}). Please confirm the service on your dashboard.\n\nRegards.\nThe Birthnon Team'
+        # notify vendor
+        vendor = self.service.vendor
+        send_sms(vendor_msg, [vendor.vendor_phone])
 
     def __str__(self):
         return f"Booking for {self.service.name} by {self.user.name} on {self.date} at {self.time}"
