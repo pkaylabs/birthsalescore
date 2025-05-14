@@ -22,7 +22,7 @@ class SubscriptionPackageAdmin(admin.ModelAdmin):
 
 @admin.register(Subscription)
 class SubscriptionAdmin(admin.ModelAdmin):
-    list_display = ('vendor', 'vendor__id', 'package', 'start_date', 'end_date')
+    list_display = ( 'id', 'vendor', 'vendor__id', 'package', 'expired', 'start_date', 'end_date')
     search_fields = ('vendor__vendor_name', 'package__package_name')
 
 @admin.register(Wallet)

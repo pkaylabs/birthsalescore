@@ -142,6 +142,12 @@ class SubscriptionRenewalAPIView(APIView):
         print(f"subscription: {subscription}")
         print(f"Vendor: {vendor}")
         if subscription:
+            # ensure only active subscriptions can be renewed
+            if subscription.expired == False:
+                return Response({
+                    "message": "You cannot renew active subscription"
+                }, status=status.HTTP_400_BAD_REQUEST)
+            # get the default birthnon vendor profile
             vendor = Vendor.objects.filter(
                 Q(vendor_name__icontains='Birthnon Account') | 
                 Q(vendor_name__icontains='Birthnon Services'), 
