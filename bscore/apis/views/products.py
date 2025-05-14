@@ -97,7 +97,7 @@ class ProductAPIView(APIView):
         return Response({"message": "Product deleted successfully"}, status=status.HTTP_200_OK)
 
 
-class CustomersProductAPIView(APIView):
+class CustomerProductsAPIView(APIView):
     '''API Endpoints for to get products for customers'''
 
     permission_classes = (permissions.AllowAny,)
@@ -111,19 +111,61 @@ class CustomersProductAPIView(APIView):
             product_ids = [
                 product.id for product in products if product.vendor.has_active_subscription() and product.vendor.can_create_or_view_product()
             ]
-            products = Product.objects.filter(id__in=product_ids).first()
+            print("Query: ", query)
+            print("Product IDs: ", product_ids)
+            products = Product.objects.filter(id__in=product_ids).filter(id=query).first()
+            print("Products: ", products)
             many = False
         else:
             # get all products
             products = Product.objects.filter(is_published=True)
+
             product_ids = [
                 product.id for product in products if product.vendor.has_active_subscription() and product.vendor.can_create_or_view_product()
             ]
+            print("Product IDs: ", product_ids)
             products = Product.objects.filter(id__in=product_ids).order_by('-created_at')
+            print("Products: ", products)
             many = True
         if query and not products:
             return Response({"message": "No products found"}, status=status.HTTP_404_NOT_FOUND)
         serializer = ProductSerializer(products, many=many)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class CustomerServicesAPIView(APIView):
+    '''API Endpoints for to get products for customers'''
+
+    permission_classes = (permissions.AllowAny,)
+
+    def get(self, request, *args, **kwargs):
+        '''Get all services for customers'''
+        query = request.query_params.get('query', None)
+        if query and query.isdigit():
+            # filter services based on query | exclude vendors with no active subscription
+            services = Service.objects.all()
+            service_ids = [
+                service.id for service in services if service.vendor.has_active_subscription() and service.vendor.can_create_or_view_service()
+            ]
+            print("Query: ", query)
+            print("Serice IDs: ", service_ids)
+            services = Service.objects.filter(id__in=service_ids).filter(id=query).first()
+            print("Services: ", services)
+            many = False
+        else:
+            # get all services
+            services = Service.objects.all()
+
+            service_ids = [
+                service.id for service in services if service.vendor.has_active_subscription() and service.vendor.can_create_or_view_service()
+            ]
+            print("Service IDs: ", service_ids)
+            services = Service.objects.filter(id__in=service_ids).order_by('-created_at')
+            print("Services: ", services)
+            many = True
+        if query and not services:
+            return Response({"message": "No services found"}, status=status.HTTP_404_NOT_FOUND)
+        serializer = ServiceSerializer(services, many=many)
         return Response(serializer.data, status=status.HTTP_200_OK)
     
 class ProductSearchAPIView(APIView):

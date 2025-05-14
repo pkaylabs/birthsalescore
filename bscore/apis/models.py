@@ -134,7 +134,6 @@ class Service(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    # @property
     def bookings(self) -> int:
         '''get all bookings for this service'''
         bookings = ServiceBooking.objects.filter(service=self).count()

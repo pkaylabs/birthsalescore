@@ -12,7 +12,7 @@ class UserAdmin(admin.ModelAdmin):
 
 @admin.register(Vendor)
 class VendorAdmin(admin.ModelAdmin):
-    list_display = ('vendor_name', 'vendor_email', 'vendor_phone', 'vendor_id')
+    list_display = ( 'id','vendor_name', 'vendor_email', 'vendor_phone', 'vendor_id')
     search_fields = ('vendor_name', 'vendor_email', 'vendor_phone', 'vendor_id')
 
 @admin.register(SubscriptionPackage)
@@ -22,7 +22,7 @@ class SubscriptionPackageAdmin(admin.ModelAdmin):
 
 @admin.register(Subscription)
 class SubscriptionAdmin(admin.ModelAdmin):
-    list_display = ('vendor', 'package', 'start_date', 'end_date')
+    list_display = ('vendor', 'vendor__id', 'package', 'start_date', 'end_date')
     search_fields = ('vendor__vendor_name', 'package__package_name')
 
 @admin.register(Wallet)
