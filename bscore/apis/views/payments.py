@@ -129,23 +129,61 @@ class MakePaymentAPI(APIView):
             },
             status=response.get('api_status')
         )
-
-
 class SubscriptionRenewalAPIView(APIView):
-    '''Endpoint to renew subscription for vendors'''
-
-    permission_classes = (permissions.IsAuthenticated,)
+    '''API Endpoint for renewal of subscriptions'''
+    permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, *args, **kwargs):
-        user = request.user
-        vendor = Vendor.objects.filter(user=user).first()
-        if not vendor:
-            return Response({"message": "Vendor profile not found"}, status=status.HTTP_400_BAD_REQUEST)
-        
-        if vendor.renew_subscription():
-            return Response({"message": "Subscription renewed successfully"}, status=status.HTTP_200_OK)
+        '''Make payment using mobile money'''
+        subscription = request.data.get('subscription', None)
+        vendor = None
+        subscription = Subscription.objects.filter(id=subscription).first() if subscription else None
+        print(f"subscription: {subscription}")
+        print(f"Vendor: {vendor}")
+        if subscription:
+            vendor = Vendor.objects.filter(
+                Q(vendor_name__icontains='Birthnon Account') | 
+                Q(vendor_name__icontains='Birthnon Services'), 
+                Q(user__is_superuser=True)
+                ).first()
         else:
-            return Response({"message": "Failed to renew subscription"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({
+                "message": "Subscription not found",
+            }, status=status.HTTP_400_BAD_REQUEST)
+        if vendor is None:
+            return Response({
+                "message": "Vendor not found",
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            response = execute_momo_transaction(
+                request=request, 
+                type=PaymentType.DEBIT.value, # debit the user and credit to the vendor
+                vendor=vendor,
+                subscription=subscription,
+                withdrawal=False,
+                )
+        except Exception as e:
+            print(f"Exception caught: {e}")
+            return Response({
+                "message": str(e),
+            }, status=status.HTTP_400_BAD_REQUEST)
+        # check if payment is successful and update subscription
+        print('response:', response)
+        if response.get('transaction').get('status_code') == '000':
+            # set the start and end date of the subscription
+            print('response:', response)
+            subscription.start_date = response.get('transaction').get('created_at')
+            subscription.save()
+        return Response(
+            {
+                "status": response.get('transaction_status'),
+                "message": response.get('message'),
+                "transaction": response.get('transaction')
+            },
+            status=response.get('api_status')
+        )
+
 
 class PaymentCallbackAPI(APIView):
     '''API Endpoint to handle payment callback'''
