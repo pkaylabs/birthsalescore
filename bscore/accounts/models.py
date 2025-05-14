@@ -198,6 +198,12 @@ class Subscription(models.Model):
             return payment.status
         return None
 
+    @property
+    def package_price(self):
+        '''Gets the package price'''
+        amount = self.package.package_price
+        return amount
+
     # set the end date to 30 days from the start date
     def save(self, *args, **kwargs):
         if not self.end_date:

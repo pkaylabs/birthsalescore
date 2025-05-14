@@ -81,6 +81,7 @@ class SubscriptionSerializer(serializers.ModelSerializer):
     package_name = serializers.ReadOnlyField()
     expired = serializers.ReadOnlyField()
     payment_status = serializers.ReadOnlyField()
+    package_price = serializers.ReadOnlyField()
     class Meta:
         model = Subscription
         fields = '__all__'
