@@ -131,6 +131,22 @@ class MakePaymentAPI(APIView):
         )
 
 
+class SubscriptionRenewalAPIView(APIView):
+    '''Endpoint to renew subscription for vendors'''
+
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def post(self, request, *args, **kwargs):
+        user = request.user
+        vendor = Vendor.objects.filter(user=user).first()
+        if not vendor:
+            return Response({"message": "Vendor profile not found"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if vendor.renew_subscription():
+            return Response({"message": "Subscription renewed successfully"}, status=status.HTTP_200_OK)
+        else:
+            return Response({"message": "Failed to renew subscription"}, status=status.HTTP_400_BAD_REQUEST)
+
 class PaymentCallbackAPI(APIView):
     '''API Endpoint to handle payment callback'''
     permission_classes = [permissions.AllowAny]

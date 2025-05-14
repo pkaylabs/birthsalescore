@@ -17,7 +17,7 @@ class VendorAdmin(admin.ModelAdmin):
 
 @admin.register(SubscriptionPackage)
 class SubscriptionPackageAdmin(admin.ModelAdmin):
-    list_display = ('package_name', 'package_price')
+    list_display = ('package_name', 'can_create_product', 'can_create_service', 'package_price')
     search_fields = ('package_name',)
 
 @admin.register(Subscription)
