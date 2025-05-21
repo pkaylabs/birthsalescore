@@ -130,6 +130,8 @@ class MakePaymentAPI(APIView):
             },
             status=response.get('api_status')
         )
+
+        
 class SubscriptionRenewalAPIView(APIView):
     '''API Endpoint for renewal of subscriptions'''
     permission_classes = [permissions.IsAuthenticated]
@@ -150,7 +152,8 @@ class SubscriptionRenewalAPIView(APIView):
             # get the default birthnon vendor profile
             vendor = Vendor.objects.filter(
                 Q(vendor_name__icontains='Birthnon Account') | 
-                Q(vendor_name__icontains='Birthnon Services'), 
+                Q(vendor_name__icontains='Birthnon Services') |
+                Q(vendor_name__icontains='Birthnon'), 
                 Q(user__is_superuser=True)
                 ).first()
         else:
@@ -181,6 +184,8 @@ class SubscriptionRenewalAPIView(APIView):
             # set the start and end date of the subscription
             print('response:', response)
             subscription.start_date = datetime.date.today()
+            # add 30 days to the start date
+            subscription.end_date = datetime.date.today() + datetime.timedelta(days=30)
             subscription.save()
         return Response(
             {
