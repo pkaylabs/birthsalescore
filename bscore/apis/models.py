@@ -113,7 +113,8 @@ class Order(models.Model):
         '''calculate total price of order'''
         total = 0.0
         for item in self.items.all():
-            total += float(item.price * item.quantity)
+            # item.price already includes quantity from OrderItem.save()
+            total += float(item.price) 
         return total
     
     @property
