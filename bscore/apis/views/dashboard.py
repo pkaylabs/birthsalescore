@@ -24,7 +24,7 @@ class DashboardAPIView(APIView):
         start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
         end_of_day = start_of_day + timezone.timedelta(days=1)
 
-        if user.user_type == UserType.VENDOR.value:
+        if user.user_type == UserType.VENDOR.value and not user.is_superuser:
             vendor = Vendor.objects.filter(user=user).first()
             wallet = Wallet.objects.filter(vendor=vendor).first()
             products = Product.objects.filter(vendor=vendor).count()
