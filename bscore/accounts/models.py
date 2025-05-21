@@ -175,11 +175,14 @@ class Subscription(models.Model):
 
     @property
     def expired(self):
-        if self.start_date is None and self.end_date is None:
-            return (self.created_at + timedelta(days=30)).date() < datetime.date.today()
-        if self.end_date is None:
-            return (self.start_date + timedelta(days=30)).today() < datetime.date.today()
-        return self.end_date < datetime.date.today()
+        '''Check if the subscription is expired'''
+        # NOTE: LATER, check payment status before checking expiry
+        today = datetime.date.today()
+        if self.end_date:
+            return self.end_date < today
+        if self.start_date:
+            return (self.start_date + timedelta(days=30)) < today
+        return (self.created_at + timedelta(days=30)).date() < today
 
     @property
     def vendor_name(self):
