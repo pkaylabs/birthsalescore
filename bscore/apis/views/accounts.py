@@ -141,7 +141,7 @@ class SubscriptionAPIView(APIView):
             vendor = Vendor.objects.filter(user=user).first()
             subscriptions = Subscription.objects.filter(
                 vendor=vendor
-            ).order_by('-created_at').first()
+            ).order_by('-created_at')
         serializer = self.serializer_class(subscriptions, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
     
