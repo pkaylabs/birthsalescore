@@ -137,14 +137,12 @@ class SubscriptionAPIView(APIView):
         user = request.user
         if user.is_superuser or user.is_staff or user.user_type == UserType.ADMIN.value:
             subscriptions = Subscription.objects.all().order_by('-created_at')
-            many = True
         else:
             vendor = Vendor.objects.filter(user=user).first()
             subscriptions = Subscription.objects.filter(
                 vendor=vendor
             ).order_by('-created_at').first()
-            many = False
-        serializer = self.serializer_class(subscriptions, many=many)
+        serializer = self.serializer_class(subscriptions, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
     
     def post(self, request, *args, **kwars):
