@@ -92,6 +92,7 @@ class ProductCategorySerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class ProductSerializer(serializers.ModelSerializer):
+    vendor_name = serializers.ReadOnlyField()
     class Meta:
         model = Product
         fields = '__all__'

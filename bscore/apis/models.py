@@ -34,6 +34,14 @@ class Product(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+
+    @property
+    def vendor_name(self) -> str:
+        '''get vendor name'''
+        if self.vendor:
+            return self.vendor.vendor_name
+        return "Birthnon Services"
+
     def __str__(self):
         return self.name
 
