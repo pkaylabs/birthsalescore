@@ -128,7 +128,7 @@ class PlaceOrderSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Order
-        fields = ['user', 'items', 'status', 'location']
+        fields = ['user', 'items', 'status', 'location', 'customer_phone']
     
     def create(self, validated_data):
         items_data = validated_data.pop('items')

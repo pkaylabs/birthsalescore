@@ -95,6 +95,7 @@ class Order(models.Model):
     # order items will be limited: only Items belonging to the same vendor can be ordered at a time.
     items = models.ManyToManyField(OrderItem, related_name='orders')
     location = models.CharField(max_length=255, blank=True, null=True)
+    customer_phone = models.CharField(max_length=15, blank=True, null=True)
     status = models.CharField(max_length=50, choices=[('Pending', 'Pending'), ('Completed', 'Completed'), ('Cancelled', 'Cancelled')], default='Pending')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -133,10 +134,8 @@ class Order(models.Model):
         customer_msg = f'Hi, {self.customer_name}.\n\nThank you for shopping with us. We hope to see you soon.\n\nRegards.\nThe Birthnon Team'
         # notify customer
         send_sms(customer_msg, [self.user.phone])
-        vendor_msg = f'Dear Vendor,\n\nA customer has placed a new order. Please confirm the order on your dashboard.\n\nRegards.\nThe Birthnon Team'
+        vendor_msg = f'Dear Vendor,\n\nA customer has placed a new order. Please login to your dashboard to see the order details.\n\nRegards.\nThe Birthnon Team'
         # notify vendor
-        print(f"self.items.all(): {self.items.all()}")
-        print(f"self.items.first(): {self.items.first()}")
         vendor = self.items.all().first().product.vendor
         send_sms(vendor_msg, [vendor.vendor_phone])
 
