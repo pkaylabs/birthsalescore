@@ -336,7 +336,7 @@ class BookingsAPIView(APIView):
             # vendors get to see only the bookings for their services
             vendor = Vendor.objects.filter(user=user).first()
             bookings = ServiceBooking.objects.filter(service__vendor=vendor).order_by('-created_at')
-        elif user.user_type == UserType.CUSTOMER.value:
+        elif user.user_type == UserType.CUSTOMER.value or user.user_type == UserType.DELIVERY.value:
             # customers get to see only their bookings
             bookings = ServiceBooking.objects.filter(user=user).order_by('-created_at')
         else:
