@@ -237,7 +237,7 @@ class OrderAPIView(APIView):
                 items__product__vendor__user=user  # Orders with items from this vendor
             ).distinct()  # Avoid duplicates if order has multiple items from same vendor
             
-        elif user.user_type == UserType.CUSTOMER.value and user.user_type == UserType.DELIVERY.value:
+        elif user.user_type == UserType.CUSTOMER.value or user.user_type == UserType.DELIVERY.value:
             # CUSTOMER: See only THEIR OWN orders
             orders = Order.objects.filter(user=user)
             
