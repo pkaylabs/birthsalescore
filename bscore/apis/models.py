@@ -250,8 +250,16 @@ class ServiceBooking(models.Model):
         return self.user.name
     
     @property
+    def user_phone(self) -> str:
+        return self.user.phone
+    
+    @property
     def vendor_name(self):
         return self.service.vendor.vendor_name
+    
+    @property
+    def vendor_phone(self):
+        return self.service.vendor.vendor_phone
     
     def notify_vendor_and_customer(self) -> None:
         '''Send notifications to the vendor and customer'''

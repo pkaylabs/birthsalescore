@@ -158,6 +158,8 @@ class ServiceBookingSerializer(serializers.ModelSerializer):
     service_name = serializers.ReadOnlyField()
     user_name = serializers.ReadOnlyField()
     vendor_name = serializers.ReadOnlyField()
+    user_phone = serializers.ReadOnlyField()
+    vendor_phone = serializers.ReadOnlyField()
 
     class Meta:
         model = ServiceBooking
