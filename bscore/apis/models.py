@@ -79,6 +79,12 @@ class OrderItem(models.Model):
     quantity = models.PositiveIntegerField(default=1)
     price = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
 
+
+    @property
+    def product_name(self) -> str:
+        '''get product name'''
+        return self.product.name if self.product else "Unknown Product"
+
     def save(self, *args, **kwargs):
         self.price = self.product.price * self.quantity
         super().save(*args, **kwargs)
