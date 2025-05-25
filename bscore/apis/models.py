@@ -143,6 +143,14 @@ class Order(models.Model):
             return vendor.vendor_name
         return "None"
     
+    @property
+    def vendor_phone(self) -> str:
+        '''get vendor phone number'''
+        vendor = self.items.all().first().product.vendor
+        if vendor:
+            return vendor.vendor_phone
+        return "None"
+    
     def notify_vendor_and_customer(self) -> None:
         '''Send notifications to the vendor and customer'''
         from bscore.utils.services import send_sms

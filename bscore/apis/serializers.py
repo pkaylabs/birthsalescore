@@ -120,6 +120,7 @@ class OrderSerializer(serializers.ModelSerializer):
     vendor_id = serializers.ReadOnlyField()
     customer_name = serializers.ReadOnlyField()
     vendor_name = serializers.ReadOnlyField()
+    vendor_phone = serializers.ReadOnlyField()
     class Meta:
         model = Order
         fields = '__all__'
