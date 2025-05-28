@@ -142,8 +142,10 @@ class CustomerServicesAPIView(APIView):
         '''Get all services for customers'''
         query = request.query_params.get('query', None)
         if query and query.isdigit():
-            # filter services based on query | exclude vendors with no active subscription
-            services = Service.objects.all()
+            # filter services based on query 
+            # | exclude vendors with no active subscription
+            # | exclude services that are not published
+            services = Service.objects.filter(published=True)
             service_ids = [
                 service.id for service in services if service.vendor.has_active_subscription() and service.vendor.can_create_or_view_service()
             ]
@@ -154,7 +156,7 @@ class CustomerServicesAPIView(APIView):
             many = False
         else:
             # get all services
-            services = Service.objects.all()
+            services = Service.objects.filter(published=True)
 
             service_ids = [
                 service.id for service in services if service.vendor.has_active_subscription() and service.vendor.can_create_or_view_service()
@@ -289,8 +291,6 @@ class ServicesAPIView(APIView):
         if vendor_id and not vendor:
             vendor = Vendor.objects.filter(vendor_id=vendor_id).first()
         
-        # if not vendor:
-        #     return Response({"error": "A vendor profile is required"}, status=status.HTTP_400_BAD_REQUEST)
         if not (vendor and vendor.has_active_subscription() and vendor.can_create_or_view_product()):
             return Response({"message": "Vendor profile not found or subscription expired"}, status=status.HTTP_400_BAD_REQUEST)
         
@@ -300,6 +300,26 @@ class ServicesAPIView(APIView):
             service = serializer.save(vendor=vendor)
             return Response(ServiceSerializer(service).data, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    def put(self, request, *args, **kwargs):
+        '''
+            Update Service endpoint.
+            We're using this to publish a service.
+            Only admins can publish a service.
+        '''
+        user = request.user
+        service_id = request.data.get('service_id')
+        if user.is_superuser or user.is_staff or user.user_type == UserType.ADMIN.value:
+           service = Service.objects.filter(id=service_id).first()
+           if not service:
+               return Response({"error": "Service not found"}, status=status.HTTP_404_NOT_FOUND)
+           service.published = True
+           service.save()
+           serializer = ServiceSerializer(service)
+           return Response({"message": "Service updated successfully", "service": serializer.data}, status=status.HTTP_200_OK)
+        else:
+            return Response({"message": "You are not allowed to access this page"}, status=status.HTTP_403_FORBIDDEN)
+
     
 
     def delete(self, request, *args, **kwargs):

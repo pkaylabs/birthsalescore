@@ -175,6 +175,7 @@ class Service(models.Model):
     price = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     vendor = models.ForeignKey(Vendor, on_delete=models.CASCADE, related_name='services', null=True, blank=True)
     image = models.ImageField(upload_to='services/', blank=True, null=True)
+    published = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
