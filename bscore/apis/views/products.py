@@ -316,7 +316,7 @@ class ServicesAPIView(APIView):
            service.published = True
            service.save()
            serializer = ServiceSerializer(service)
-           return Response({"message": "Service updated successfully", "service": serializer.data}, status=status.HTTP_200_OK)
+           return Response({"message": "Service Published Successfully", "service": serializer.data}, status=status.HTTP_200_OK)
         else:
             return Response({"message": "You are not allowed to access this page"}, status=status.HTTP_403_FORBIDDEN)
 
