@@ -161,9 +161,23 @@ class MobileChangePasswordAPI(APIView):
         user = request.user
         serializer = self.serializer_class(data=request.data)
         if serializer.is_valid():
-            if not user.check_password(serializer.data.get('old_password')):
-                return Response({'old_password': 'Wrong password.'}, status=status.HTTP_400_BAD_REQUEST)
-            user.set_password(serializer.data.get('new_password'))
+            if not user.check_password(serializer.validated_data.get('old_password')):
+                return Response({
+                    "status": "error",
+                    "error_message": "Incorrect current password",
+                    "errors": {"old_password": ["Incorrect current password"]},
+                }, status=status.HTTP_400_BAD_REQUEST)
+            user.set_password(serializer.validated_data.get('new_password'))
             user.save()
-            return Response({'status': 'success'}, status=status.HTTP_200_OK)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            return Response({
+                'status': 'success',
+                'message': 'Password updated successfully'
+            }, status=status.HTTP_200_OK)
+        # Return friendly, structured errors
+        first_field = next(iter(serializer.errors), None)
+        first_error = serializer.errors.get(first_field, ["Invalid data"])[0] if first_field else "Invalid data"
+        return Response({
+            "status": "error",
+            "error_message": str(first_error),
+            "errors": serializer.errors,
+        }, status=status.HTTP_400_BAD_REQUEST)
