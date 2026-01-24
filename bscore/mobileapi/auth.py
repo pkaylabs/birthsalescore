@@ -12,7 +12,9 @@ from apis.serializers import (
     RegisterUserSerializer,
     UserSerializer,
     ChangePasswordSerializer,
+    ContactSupportSerializer,
 )
+from bscore import settings
 
 
 class MobileLoginAPI(APIView):
@@ -180,4 +182,35 @@ class MobileChangePasswordAPI(APIView):
             "status": "error",
             "error_message": str(first_error),
             "errors": serializer.errors,
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+
+class MobileContactSupportAPI(APIView):
+    """Allow users (auth or guest) to contact support with name, email, phone, message."""
+
+    permission_classes = (permissions.AllowAny,)
+    serializer_class = ContactSupportSerializer
+
+    def post(self, request, *args, **kwargs):
+        serializer = self.serializer_class(data=request.data)
+        if serializer.is_valid():
+            data = serializer.validated_data
+            # Save message to database; signals will handle email notification
+            from apis.models import ContactMessage
+            cm = ContactMessage.objects.create(
+                user=request.user if getattr(request, "user", None) and request.user.is_authenticated else None,
+                name=data['name'],
+                email=data['email'],
+                phone=data['phone'],
+                message=data['message'],
+            )
+            return Response({
+                "status": "success",
+                "message": "Your message has been received. Our support team will contact you soon.",
+                "contact_message_id": cm.id,
+            }, status=status.HTTP_200_OK)
+        return Response({
+            "status": "error",
+            "errors": serializer.errors,
+            "error_message": str(next(iter(serializer.errors.values()))[0]) if serializer.errors else "Invalid data",
         }, status=status.HTTP_400_BAD_REQUEST)
