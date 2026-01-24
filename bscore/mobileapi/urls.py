@@ -14,6 +14,7 @@ from .auth import (
 	MobileVerifyOTPAPI,
 	MobileUserProfileAPIView,
 	MobileChangePasswordAPI,
+	MobileContactSupportAPI,
 )
 from knox.views import LogoutView, LogoutAllView
 
@@ -33,6 +34,7 @@ urlpatterns = [
 	path('verifyotp/', MobileVerifyOTPAPI.as_view(), name='verify_otp'),
 	path('profile/', MobileUserProfileAPIView.as_view(), name='profile'),
 	path('changepassword/', MobileChangePasswordAPI.as_view(), name='change_password'),
+	path('contactsupport/', MobileContactSupportAPI.as_view(), name='contact_support'),
 	# Logout only current token
 	path('logout/', LogoutView.as_view(), name='logout_current'),
 	# Logout all tokens for the user
