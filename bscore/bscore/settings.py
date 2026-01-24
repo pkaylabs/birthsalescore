@@ -181,3 +181,9 @@ ARKESEL_API_KEY = os.getenv('ARKESEL_SMS_API_KEY')
 PAYHUB_SECRET_TOKEN = os.getenv('PAYHUB_SECRET_TOKEN')
 PAYHUB_WALLET_ID = os.getenv('PAYHUB_WALLET_ID')
 MIN_CASHOUT_AMOUNT = 1 # minimum cashout amount
+
+# Paystack settings
+PAYSTACK_SECRET_KEY = os.getenv('PAYSTACK_SECRET_KEY')
+PAYSTACK_PUBLIC_KEY = os.getenv('PAYSTACK_PUBLIC_KEY')
+# Optional: default callback URL used when client doesn't provide one
+PAYSTACK_CALLBACK_URL = os.getenv('PAYSTACK_CALLBACK_URL')
