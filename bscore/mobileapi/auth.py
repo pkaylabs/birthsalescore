@@ -11,6 +11,7 @@ from apis.serializers import (
     LoginSerializer,
     RegisterUserSerializer,
     UserSerializer,
+    ChangePasswordSerializer,
 )
 
 
@@ -130,3 +131,39 @@ class MobileRegisterAPI(APIView):
             "user": UserSerializer(user).data,
             "token": AuthToken.objects.create(user)[1],
         })
+
+
+class MobileUserProfileAPIView(APIView):
+    """Get and update authenticated user's profile for mobile clients."""
+
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def get(self, request, *args, **kwargs):
+        user = request.user
+        return Response(UserSerializer(user).data, status=status.HTTP_200_OK)
+
+    def put(self, request, *args, **kwargs):
+        user = request.user
+        serializer = UserSerializer(user, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class MobileChangePasswordAPI(APIView):
+    """Change password for authenticated mobile users."""
+
+    permission_classes = (permissions.IsAuthenticated,)
+    serializer_class = ChangePasswordSerializer
+
+    def post(self, request, *args, **kwargs):
+        user = request.user
+        serializer = self.serializer_class(data=request.data)
+        if serializer.is_valid():
+            if not user.check_password(serializer.data.get('old_password')):
+                return Response({'old_password': 'Wrong password.'}, status=status.HTTP_400_BAD_REQUEST)
+            user.set_password(serializer.data.get('new_password'))
+            user.save()
+            return Response({'status': 'success'}, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
