@@ -28,6 +28,7 @@ class PaymentMethod(Enum):
     '''Payment methods for the application'''
     MOMO = 'MOMO'
     CASH = 'CASH'
+    PAYSTACK = 'PAYSTACK'
 
 
 class PaymentType(Enum):
