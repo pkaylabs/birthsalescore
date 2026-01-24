@@ -9,8 +9,13 @@ from apis.models import Order, Payment, ServiceBooking
 from apis.serializers import PaymentSerializer
 from bscore.utils.const import PaymentType, UserType
 from bscore.utils.permissions import allow_domains
-from bscore.utils.services import (can_cashout, execute_momo_transaction,
-                                   get_transaction_status)
+from bscore.utils.services import (
+    can_cashout,
+    execute_momo_transaction,
+    get_transaction_status,
+    initiate_paystack_payment,
+    finalize_paystack_payment,
+)
 
 
 class PaymentAPIView(APIView):
@@ -131,6 +136,52 @@ class MakePaymentAPI(APIView):
             status=response.get('api_status')
         )
 
+
+class MakePaystackPaymentAPI(APIView):
+    '''API Endpoint to initialize Paystack payment (web/mobile).'''
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        subscription = request.data.get('subscription', None)
+        order = request.data.get('order', None)
+        booking = request.data.get('booking', None)
+        vendor = None
+        subscription = Subscription.objects.filter(id=subscription).first() if subscription else None
+        order = Order.objects.filter(id=order).first() if order else None
+        booking = ServiceBooking.objects.filter(id=booking).first() if booking else None
+
+        if subscription:
+            vendor = Vendor.objects.filter(
+                Q(vendor_name__icontains='Birthnon Account') |
+                Q(vendor_name__icontains='Birthnon Services') |
+                Q(vendor_name__icontains='Birthnon'),
+                Q(user__is_superuser=True)
+            ).first()
+        elif order:
+            if order is None:
+                return Response({"message": "Order not found"}, status=status.HTTP_400_BAD_REQUEST)
+            vendor = Vendor.objects.filter(vendor_id=order.vendor_id).first()
+        elif booking:
+            if booking is None:
+                return Response({"message": "Booking not found"}, status=status.HTTP_400_BAD_REQUEST)
+            vendor = booking.service.vendor
+
+        if vendor is None:
+            return Response({"message": "Vendor not found"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            result = initiate_paystack_payment(
+                request=request,
+                vendor=vendor,
+                subscription=subscription,
+                order=order,
+                booking=booking,
+            )
+        except Exception as e:
+            return Response({"message": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(result, status=result.get('api_status', status.HTTP_200_OK))
+
         
 class SubscriptionRenewalAPIView(APIView):
     '''API Endpoint for renewal of subscriptions'''
@@ -203,10 +254,12 @@ class PaymentCallbackAPI(APIView):
 
     @allow_domains(['localhost:8000'],)
     def get(self, request, *args, **kwargs):
-        '''Handle payment callback'''
-        return Response({
-            "message": "Callback received",
-        }, status=status.HTTP_200_OK)
+        '''Handle payment callback from Paystack (redirect with reference).'''
+        reference = request.query_params.get('reference') or request.query_params.get('payment_id')
+        if not reference:
+            return Response({"message": "reference is required"}, status=status.HTTP_400_BAD_REQUEST)
+        result = finalize_paystack_payment(reference)
+        return Response(result, status=result.get('api_status', status.HTTP_200_OK))
     
 class PaymentStatusCheckAPI(APIView):
     '''API Endpoint to check payment status'''
@@ -231,3 +284,15 @@ class PaymentStatusCheckAPI(APIView):
         payment.save()
         serializer = PaymentSerializer(payment)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class PaystackVerifyAPI(APIView):
+    '''API Endpoint to verify Paystack payment reference and update records.'''
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        reference = request.query_params.get('reference') or request.query_params.get('payment_id')
+        if not reference:
+            return Response({"message": "reference is required"}, status=status.HTTP_400_BAD_REQUEST)
+        result = finalize_paystack_payment(reference)
+        return Response(result, status=result.get('api_status', status.HTTP_200_OK))
