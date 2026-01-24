@@ -30,7 +30,7 @@ class OrderItemAdmin(admin.ModelAdmin):
 
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
-    list_display = ('user', 'total_price', 'status', 'payment_status', 'created_at')
+    list_display = ( 'id','user', 'total_price', 'status', 'payment_status', 'created_at')
     search_fields = ('user__name', 'status')
 
 @admin.register(Service)
