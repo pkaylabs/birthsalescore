@@ -4,7 +4,9 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 
 from accounts.models import OTP, User, Vendor
-from apis.models import Order, Payment, ServiceBooking
+from apis.models import Order, Payment, ServiceBooking, ContactMessage
+from django.core.mail import send_mail
+from django.conf import settings
 from bscore.utils.const import PaymentStatusCode, PaymentType, UserType
 
 
@@ -84,4 +86,29 @@ def notify_vendor_and_customer(sender, instance, created, **kwargs):
     if created:
         # notify vendor and customer of new service booking
         instance.notify_vendor_and_customer()
+    return
+
+
+@receiver(post_save, sender=ContactMessage)
+def send_contact_message_email(sender, instance, created, **kwargs):
+    """Email support when a contact message is created."""
+    if created:
+        subject = f"Support Request from {instance.name}"
+        body = (
+            f"Name: {instance.name}\n"
+            f"Email: {instance.email}\n"
+            f"Phone: {instance.phone}\n\n"
+            f"Message:\n{instance.message}\n"
+        )
+        try:
+            send_mail(
+                subject,
+                body,
+                settings.DEFAULT_FROM_EMAIL,
+                [settings.SUPPORT_EMAIL] if getattr(settings, 'SUPPORT_EMAIL', None) else [settings.DEFAULT_FROM_EMAIL],
+                fail_silently=True,
+            )
+        except Exception:
+            # Silently ignore to avoid breaking user flow; consider logging
+            pass
     return
