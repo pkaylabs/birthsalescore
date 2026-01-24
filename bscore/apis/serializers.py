@@ -208,8 +208,16 @@ class ChangePasswordSerializer(serializers.Serializer):
     confirm_password = serializers.CharField()
 
     def validate(self, data):
+        # Field presence checks with friendly messages
+        if not data.get('old_password'):
+            raise serializers.ValidationError({'old_password': 'Current password is required'})
+        if not data.get('new_password'):
+            raise serializers.ValidationError({'new_password': 'New password is required'})
+        if not data.get('confirm_password'):
+            raise serializers.ValidationError({'confirm_password': 'Confirm password is required'})
+        # Match check with field-specific error
         if data.get('new_password') != data.get('confirm_password'):
-            raise serializers.ValidationError("Passwords do not match")
+            raise serializers.ValidationError({'confirm_password': 'New passwords do not match'})
         return data
 
 class ResetPasswordSerializer(serializers.Serializer):
