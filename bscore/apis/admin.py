@@ -62,3 +62,8 @@ class ServiceBookingAdmin(admin.ModelAdmin):
 class BannerAdmin(admin.ModelAdmin):
     list_display = ('title', 'link', 'is_active', 'created_at')
     search_fields = ('title', 'link')
+
+@admin.register(ContactMessage)
+class ContactMessageAdmin(admin.ModelAdmin):
+    list_display = ('name', 'email', 'phone', 'status', 'created_at')
+    search_fields = ('name', 'email', 'phone', 'message')
