@@ -27,7 +27,8 @@ class MobileHomepageAPIView(APIView):
 	permission_classes = [permissions.AllowAny]
 
 	def get(self, request, *args, **kwargs):
-		banners = Banner.objects.filter(is_active=True).order_by('?')[:10]
+		# Featured content: use active banners as featured slots
+		featured = Banner.objects.filter(is_active=True).order_by('-created_at')[:10]
 		categories = ProductCategory.objects.all().order_by('-created_at')
 
 		# Published products only; ensure vendor is allowed
@@ -37,16 +38,12 @@ class MobileHomepageAPIView(APIView):
 			for p in products_qs
 			if p.vendor and p.vendor.has_active_subscription() and p.vendor.can_create_or_view_product()
 		]
-		products = Product.objects.filter(id__in=allowed_ids).order_by('?')[:10]
-		best_selling_products = Product.objects.filter(id__in=allowed_ids).order_by('?')[:10]
-		new_arrivals = Product.objects.filter(id__in=allowed_ids).order_by('-created_at')[:3]
+		products_top = Product.objects.filter(id__in=allowed_ids).order_by('-created_at')[:50]
 
 		data = {
-			"banners": BannerSerializer(banners, many=True).data,
 			"categories": ProductCategorySerializer(categories, many=True).data,
-			"products": ProductSerializer(products, many=True).data,
-			"best_selling_products": ProductSerializer(best_selling_products, many=True).data,
-			"new_arrivals": ProductSerializer(new_arrivals, many=True).data,
+			"featured": BannerSerializer(featured, many=True).data,
+			"products": ProductSerializer(products_top, many=True).data,
 		}
 		return Response(data, status=status.HTTP_200_OK)
 
