@@ -230,3 +230,23 @@ class ResetPasswordSerializer(serializers.Serializer):
         if not User.objects.filter(phone=data.get('phone')).exists():
             raise serializers.ValidationError("Phone does not exist")
         return data
+
+
+class ContactSupportSerializer(serializers.Serializer):
+    """Serializer for contact support requests."""
+    name = serializers.CharField(max_length=255)
+    email = serializers.EmailField()
+    phone = serializers.CharField(max_length=20)
+    message = serializers.CharField()
+
+    def validate(self, data):
+        # Basic checks and friendly messages
+        if not data.get('name'):
+            raise serializers.ValidationError({'name': 'Your name is required'})
+        if not data.get('email'):
+            raise serializers.ValidationError({'email': 'Your email is required'})
+        if not data.get('phone'):
+            raise serializers.ValidationError({'phone': 'Your phone number is required'})
+        if not data.get('message') or len(data.get('message').strip()) < 5:
+            raise serializers.ValidationError({'message': 'Please provide a brief description (min 5 characters)'})
+        return data
