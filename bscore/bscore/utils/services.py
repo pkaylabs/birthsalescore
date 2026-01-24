@@ -13,7 +13,7 @@ from accounts.models import Vendor, Wallet
 from apis.models import Payment
 from apis.serializers import PaymentSerializer
 from bscore import settings
-from bscore.utils.const import PaymentMethod, PaymentType
+from bscore.utils.const import PaymentMethod, PaymentType, PaymentStatus, PaymentStatusCode
 
 
 def send_sms(message: str, recipients: array.array, sender: str = settings.SENDER_ID):
@@ -36,6 +36,7 @@ def send_sms(message: str, recipients: array.array, sender: str = settings.SENDE
         return response.json()
     
 
+'''... PayHub integration functions ...'''
 def collect_funds(data):
     '''To collect funds from user's momo' - debit user's account'''
     ENDPOINT = 'https://payhubghana.io/api/v1.0/debit_mobile_account/'
@@ -272,3 +273,150 @@ def execute_momo_transaction(request, type, user=None, order=None, booking=None,
             "transaction": serializer.data,
             "api_status": status.HTTP_201_CREATED
         }
+
+
+# ----------------------
+# Paystack integration
+# ----------------------
+
+def _paystack_headers():
+    return {
+        "Authorization": f"Bearer {settings.PAYSTACK_SECRET_KEY}",
+        "Content-Type": "application/json",
+    }
+
+def paystack_initialize(amount_minor: int, email: str, callback_url: str, metadata: dict | None = None, currency: str = "GHS"):
+    """Initialize a Paystack transaction and return payload with auth URL and reference."""
+    url = "https://api.paystack.co/transaction/initialize"
+    payload = {
+        "amount": amount_minor,
+        "email": email,
+        "callback_url": callback_url,
+        "currency": currency,
+    }
+    if metadata:
+        payload["metadata"] = metadata
+    resp = requests.post(url, headers=_paystack_headers(), json=payload)
+    data = resp.json()
+    return data
+
+def paystack_verify(reference: str):
+    """Verify a Paystack transaction by reference."""
+    url = f"https://api.paystack.co/transaction/verify/{reference}"
+    resp = requests.get(url, headers=_paystack_headers())
+    return resp.json()
+
+def initiate_paystack_payment(request, user=None, order=None, booking=None, subscription=None, vendor=None):
+    """
+    Initialize Paystack payment for web/mobile.
+    Creates a pending Payment record with method PAYSTACK and returns authorization URL + reference.
+    """
+    user = request.user if user is None else user
+    if vendor is None:
+        return {
+            "status": "failed",
+            "message": "Vendor not found",
+            "api_status": status.HTTP_400_BAD_REQUEST,
+        }
+
+    amount_res = get_payment_amount(request=request, cashout=False, subscription=subscription, order=order, booking=booking)
+    if amount_res.get("api_status") != status.HTTP_200_OK:
+        return {
+            "status": "failed",
+            "message": amount_res.get("message"),
+            "api_status": amount_res.get("api_status"),
+        }
+    amount = amount_res.get("amount")
+    email = getattr(user, "email", None) or request.data.get("email")
+    callback_url = request.data.get("callback_url") or settings.PAYSTACK_CALLBACK_URL
+    if not email:
+        return {
+            "status": "failed",
+            "message": "Email is required for Paystack",
+            "api_status": status.HTTP_400_BAD_REQUEST,
+        }
+    if not settings.PAYSTACK_SECRET_KEY:
+        return {
+            "status": "failed",
+            "message": "Paystack secret key not configured",
+            "api_status": status.HTTP_500_INTERNAL_SERVER_ERROR,
+        }
+
+    init = paystack_initialize(amount_minor=int(amount * 100), email=email, callback_url=callback_url or "")
+    if not init.get("status"):
+        return {
+            "status": "failed",
+            "message": init.get("message", "Failed to initialize Paystack"),
+            "api_status": status.HTTP_400_BAD_REQUEST,
+        }
+
+    reference = init["data"]["reference"]
+    authorization_url = init["data"]["authorization_url"]
+
+    transaction = {
+        "payment_id": reference,
+        "status_code": None,
+        "status": PaymentStatus.PENDING.value,
+        "order": order,
+        "vendor": vendor,
+        "booking": booking,
+        "subscription": subscription,
+        "user": user,
+        "reason": "Birthnon Payments",
+        "payment_method": PaymentMethod.PAYSTACK.value,
+        "payment_type": PaymentType.DEBIT.value,
+        "amount": amount,
+    }
+    transaction = Payment.objects.create(**transaction)
+    serializer = PaymentSerializer(transaction, many=False)
+
+    return {
+        "status": "initialized",
+        "authorization_url": authorization_url,
+        "reference": reference,
+        "transaction": serializer.data,
+        "api_status": status.HTTP_200_OK,
+    }
+
+def finalize_paystack_payment(reference: str):
+    """Verify Paystack payment and update Payment record and vendor wallet if successful."""
+    verify = paystack_verify(reference)
+    payment = Payment.objects.filter(payment_id=reference).first()
+    if not payment:
+        return {
+            "status": "failed",
+            "message": "Payment not found",
+            "api_status": status.HTTP_404_NOT_FOUND,
+        }
+
+    # Default values
+    payment.status_code = None
+    payment.status = PaymentStatus.FAILED.value
+
+    if verify.get("status") and verify.get("data"):
+        data = verify["data"]
+        status_text = data.get("status")  # 'success', 'failed'
+        # Map to internal codes
+        if status_text == "success":
+            payment.status = PaymentStatus.SUCCESS.value
+            payment.status_code = PaymentStatusCode.SUCCESS.value
+            # Credit vendor wallet
+            vendor = payment.vendor
+            if vendor and vendor.get_wallet():
+                wallet = vendor.get_wallet()
+                wallet.credit_wallet(payment.amount)
+                payment.vendor_credited_debited = True
+        elif status_text == "failed":
+            payment.status = PaymentStatus.FAILED.value
+            payment.status_code = PaymentStatusCode.FAILED.value
+        else:
+            payment.status = PaymentStatus.PENDING.value
+            payment.status_code = PaymentStatusCode.PENDING.value
+
+    payment.save()
+    serializer = PaymentSerializer(payment)
+    return {
+        "status": payment.status,
+        "transaction": serializer.data,
+        "api_status": status.HTTP_200_OK,
+    }
