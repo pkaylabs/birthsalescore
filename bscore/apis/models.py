@@ -351,3 +351,24 @@ class Payment(models.Model):
         return  f'{self.payment_id} - ' + msg
     
 
+class ContactMessage(models.Model):
+    """Model representing a contact/support message from a user or guest."""
+    STATUS_CHOICES = [
+        ('NEW', 'New'),
+        ('PROCESSING', 'Processing'),
+        ('RESOLVED', 'Resolved'),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='contact_messages')
+    name = models.CharField(max_length=255)
+    email = models.EmailField()
+    phone = models.CharField(max_length=20)
+    message = models.TextField()
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='NEW')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.name} - {self.email}"
+
+
