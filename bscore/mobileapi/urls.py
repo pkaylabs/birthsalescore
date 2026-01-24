@@ -8,6 +8,12 @@ from .viewsets import (
 	ProductViewSet,
 	ServiceViewSet,
 )
+from .auth import (
+	MobileLoginAPI,
+	MobileRegisterAPI,
+	MobileVerifyOTPAPI,
+)
+from knox.views import LogoutView, LogoutAllView
 
 app_name = 'mobileapi'
 
@@ -19,5 +25,13 @@ router.register(r'banners', BannerViewSet, basename='mobile-banners')
 
 urlpatterns = [
 	path('homepage/', MobileHomepageAPIView.as_view(), name='homepage'),
+	# Auth endpoints
+	path('login/', MobileLoginAPI.as_view(), name='login'),
+	path('register/', MobileRegisterAPI.as_view(), name='register'),
+	path('verifyotp/', MobileVerifyOTPAPI.as_view(), name='verify_otp'),
+	# Logout only current token
+	path('logout/', LogoutView.as_view(), name='logout_current'),
+	# Logout all tokens for the user
+	path('logout-all/', LogoutAllView.as_view(), name='logout_all'),
 	path('', include(router.urls)),
 ]
