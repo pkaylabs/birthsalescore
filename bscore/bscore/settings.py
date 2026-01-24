@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     # internal apps
     'accounts.apps.AccountsConfig',
     'apis.apps.ApisConfig',
+    'mobileapi.apps.MobileapiConfig',
 
 ]
 
