@@ -5,6 +5,8 @@ from knox.models import AuthToken
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.parsers import MultiPartParser, FormParser
+from drf_spectacular.utils import extend_schema, OpenApiExample, OpenApiResponse
 
 from accounts.models import OTP, User
 from apis.serializers import (
@@ -13,6 +15,7 @@ from apis.serializers import (
     UserSerializer,
     ChangePasswordSerializer,
     ContactSupportSerializer,
+    UserAvatarSerializer,
 )
 from bscore import settings
 
@@ -23,6 +26,32 @@ class MobileLoginAPI(APIView):
     permission_classes = (permissions.AllowAny,)
     serializer_class = LoginSerializer
 
+    @extend_schema(
+        request=LoginSerializer,
+        responses={
+            200: OpenApiResponse(
+                response=UserSerializer,
+                description='Login successful',
+                examples=[
+                    OpenApiExample(
+                        'Success Response',
+                        value={
+                            "user": {"id": 1, "email": "user@example.com", "name": "John Doe", "phone": "233200000000"},
+                            "token": "abcd1234efgh5678ijkl9012mnop3456qrst7890"
+                        }
+                    )
+                ]
+            ),
+            401: OpenApiResponse(description='Invalid credentials')
+        },
+        examples=[
+            OpenApiExample(
+                'Login Request',
+                value={"email": "user@example.com", "password": "password123"},
+                request_only=True
+            )
+        ]
+    )
     def post(self, request, *args, **kwargs):
         serializer = self.serializer_class(data=request.data)
         try:
@@ -47,7 +76,7 @@ class MobileLoginAPI(APIView):
         # Delete existing token to keep single active session behavior
         AuthToken.objects.filter(user=user).delete()
         return Response({
-            "user": UserSerializer(user).data,
+            "user": UserSerializer(user, context={'request': request}).data,
             "token": AuthToken.objects.create(user)[1],
         })
 
@@ -57,6 +86,15 @@ class MobileVerifyOTPAPI(APIView):
 
     permission_classes = (permissions.AllowAny,)
 
+    @extend_schema(
+        parameters=[
+            {'name': 'phone', 'required': True, 'type': str, 'description': 'Phone number'}
+        ],
+        responses={
+            200: OpenApiResponse(description='OTP sent successfully'),
+            404: OpenApiResponse(description='User not found')
+        }
+    )
     def get(self, request, *args, **kwargs):
         phone = request.query_params.get('phone')
         if not phone:
@@ -75,6 +113,38 @@ class MobileVerifyOTPAPI(APIView):
             return Response({'error': 'Failed to send OTP'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         return Response({'message': 'OTP sent successfully'}, status=status.HTTP_200_OK)
 
+    @extend_schema(
+        request={
+            'type': 'object',
+            'properties': {
+                'phone': {'type': 'string'},
+                'otp': {'type': 'string'}
+            }
+        },
+        responses={
+            200: OpenApiResponse(
+                description='OTP verified',
+                examples=[
+                    OpenApiExample(
+                        'Success',
+                        value={
+                            "message": "OTP verified successfully",
+                            "user": {"id": 1, "email": "user@example.com", "name": "John Doe"},
+                            "token": "abcd1234efgh5678"
+                        }
+                    )
+                ]
+            ),
+            400: OpenApiResponse(description='Invalid or expired OTP')
+        },
+        examples=[
+            OpenApiExample(
+                'Verify OTP',
+                value={"phone": "233200000000", "otp": "1234"},
+                request_only=True
+            )
+        ]
+    )
     def post(self, request, *args, **kwargs):
         otp = request.data.get('otp')
         phone = request.data.get('phone')
@@ -99,7 +169,7 @@ class MobileVerifyOTPAPI(APIView):
         # AuthToken.objects.filter(user=user).delete()
         return Response({
             'message': 'OTP verified successfully',
-            'user': UserSerializer(user).data,
+            'user': UserSerializer(user, context={'request': request}).data,
             'token': AuthToken.objects.create(user)[1],
         }, status=status.HTTP_200_OK)
 
@@ -109,6 +179,37 @@ class MobileRegisterAPI(APIView):
 
     permission_classes = (permissions.AllowAny,)
 
+    @extend_schema(
+        request=RegisterUserSerializer,
+        responses={
+            200: OpenApiResponse(
+                description='Registration successful',
+                examples=[
+                    OpenApiExample(
+                        'Success',
+                        value={
+                            "user": {"id": 1, "email": "newuser@example.com", "name": "Jane Doe", "phone": "233200000000"},
+                            "token": "abcd1234efgh5678ijkl9012mnop3456qrst7890"
+                        }
+                    )
+                ]
+            ),
+            401: OpenApiResponse(description='Validation error')
+        },
+        examples=[
+            OpenApiExample(
+                'Register Request',
+                value={
+                    "email": "newuser@example.com",
+                    "phone": "233200000000",
+                    "password": "securepass123",
+                    "name": "Jane Doe",
+                    "user_type": "CUSTOMER"
+                },
+                request_only=True
+            )
+        ]
+    )
     def post(self, request, *args, **kwargs):
         serializer = RegisterUserSerializer(data=request.data)
         try:
@@ -130,7 +231,7 @@ class MobileRegisterAPI(APIView):
 
         login(request, user)
         return Response({
-            "user": UserSerializer(user).data,
+            "user": UserSerializer(user, context={'request': request}).data,
             "token": AuthToken.objects.create(user)[1],
         })
 
@@ -140,13 +241,27 @@ class MobileUserProfileAPIView(APIView):
 
     permission_classes = (permissions.IsAuthenticated,)
 
+    @extend_schema(
+        responses={200: UserSerializer}
+    )
     def get(self, request, *args, **kwargs):
         user = request.user
-        return Response(UserSerializer(user).data, status=status.HTTP_200_OK)
+        return Response(UserSerializer(user, context={'request': request}).data, status=status.HTTP_200_OK)
 
+    @extend_schema(
+        request=UserSerializer,
+        responses={200: UserSerializer},
+        examples=[
+            OpenApiExample(
+                'Update Profile',
+                value={"name": "John Updated", "address": "New Address 123"},
+                request_only=True
+            )
+        ]
+    )
     def put(self, request, *args, **kwargs):
         user = request.user
-        serializer = UserSerializer(user, data=request.data, partial=True)
+        serializer = UserSerializer(user, data=request.data, partial=True, context={'request': request})
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data, status=status.HTTP_200_OK)
@@ -159,6 +274,32 @@ class MobileChangePasswordAPI(APIView):
     permission_classes = (permissions.IsAuthenticated,)
     serializer_class = ChangePasswordSerializer
 
+    @extend_schema(
+        request=ChangePasswordSerializer,
+        responses={
+            200: OpenApiResponse(
+                description='Password changed successfully',
+                examples=[
+                    OpenApiExample(
+                        'Success',
+                        value={"status": "success", "message": "Password updated successfully"}
+                    )
+                ]
+            ),
+            400: OpenApiResponse(description='Validation error or incorrect password')
+        },
+        examples=[
+            OpenApiExample(
+                'Change Password',
+                value={
+                    "old_password": "oldpass123",
+                    "new_password": "newpass456",
+                    "confirm_password": "newpass456"
+                },
+                request_only=True
+            )
+        ]
+    )
     def post(self, request, *args, **kwargs):
         user = request.user
         serializer = self.serializer_class(data=request.data)
@@ -191,6 +332,37 @@ class MobileContactSupportAPI(APIView):
     permission_classes = (permissions.AllowAny,)
     serializer_class = ContactSupportSerializer
 
+    @extend_schema(
+        request=ContactSupportSerializer,
+        responses={
+            200: OpenApiResponse(
+                description='Message received',
+                examples=[
+                    OpenApiExample(
+                        'Success',
+                        value={
+                            "status": "success",
+                            "message": "Your message has been received. Our support team will contact you soon.",
+                            "contact_message_id": 1
+                        }
+                    )
+                ]
+            ),
+            400: OpenApiResponse(description='Validation error')
+        },
+        examples=[
+            OpenApiExample(
+                'Contact Support',
+                value={
+                    "name": "John Doe",
+                    "email": "john@example.com",
+                    "phone": "233200000000",
+                    "message": "I need help with my order"
+                },
+                request_only=True
+            )
+        ]
+    )
     def post(self, request, *args, **kwargs):
         serializer = self.serializer_class(data=request.data)
         if serializer.is_valid():
@@ -213,4 +385,56 @@ class MobileContactSupportAPI(APIView):
             "status": "error",
             "errors": serializer.errors,
             "error_message": str(next(iter(serializer.errors.values()))[0]) if serializer.errors else "Invalid data",
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+
+class MobileUserAvatarUpdateAPI(APIView):
+    """Update authenticated user's profile picture (avatar) for mobile clients."""
+    
+    permission_classes = (permissions.IsAuthenticated,)
+    parser_classes = (MultiPartParser, FormParser)
+
+    @extend_schema(
+        request={
+            'multipart/form-data': {
+                'type': 'object',
+                'properties': {
+                    'avatar': {
+                        'type': 'string',
+                        'format': 'binary'
+                    }
+                }
+            }
+        },
+        responses={
+            200: OpenApiResponse(
+                description='Profile picture updated',
+                examples=[
+                    OpenApiExample(
+                        'Success',
+                        value={
+                            "status": "success",
+                            "message": "Profile picture updated successfully",
+                            "avatar": "/media/avatars/user_profile.jpg"
+                        }
+                    )
+                ]
+            ),
+            400: OpenApiResponse(description='Invalid file or validation error')
+        }
+    )
+    def patch(self, request, *args, **kwargs):
+        user = request.user
+        serializer = UserAvatarSerializer(user, data=request.data, partial=True, context={'request': request})
+        if serializer.is_valid():
+            serializer.save()
+            return Response({
+                'status': 'success',
+                'message': 'Profile picture updated successfully',
+                'avatar': serializer.data['avatar']
+            }, status=status.HTTP_200_OK)
+        return Response({
+            'status': 'error',
+            'errors': serializer.errors,
+            'error_message': str(next(iter(serializer.errors.values()))[0]) if serializer.errors else 'Invalid data',
         }, status=status.HTTP_400_BAD_REQUEST)

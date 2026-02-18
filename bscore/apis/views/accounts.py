@@ -19,12 +19,12 @@ class UsersAPIView(APIView):
     def get(self, request, *args, **kwargs):
         '''Retrieve all users (Only admins can access)'''
         users = User.objects.filter(deleted=False).order_by('-created_at')
-        serializer = UserSerializer(users, many=True)
+        serializer = UserSerializer(users, many=True, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def post(self, request, *args, **kwargs):
         '''Register a new user (Only admins can create users)'''
-        serializer = UserSerializer(data=request.data)
+        serializer = UserSerializer(data=request.data, context={'request': request})
         if serializer.is_valid():
             serializer.save()
             return Response({"message": "User Created Successfully", "user": serializer.data}, status=status.HTTP_201_CREATED)
@@ -86,7 +86,7 @@ class VendorProfileAPIView(APIView):
         user = request.user
         vendor = Vendor.objects.filter(user=user).first()
         context = {
-            "user": UserSerializer(user).data,
+            "user": UserSerializer(user, context={'request': request}).data,
             "vendor": VendorSerializer(vendor).data
         }
         return Response(context, status=status.HTTP_200_OK)

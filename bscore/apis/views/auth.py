@@ -5,11 +5,13 @@ from knox.models import AuthToken
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.parsers import MultiPartParser, FormParser
+from drf_spectacular.utils import extend_schema, OpenApiExample, OpenApiResponse
 
 from accounts.models import OTP, User
 from apis.serializers import (ChangePasswordSerializer, LoginSerializer,
                               RegisterUserSerializer, ResetPasswordSerializer,
-                              UserSerializer)
+                              UserSerializer, UserAvatarSerializer)
 
 
 class LoginAPI(APIView):
@@ -17,6 +19,32 @@ class LoginAPI(APIView):
     permission_classes = (permissions.AllowAny,)
     serializer_class = LoginSerializer
 
+    @extend_schema(
+        request=LoginSerializer,
+        responses={
+            200: OpenApiResponse(
+                response=UserSerializer,
+                description='Login successful',
+                examples=[
+                    OpenApiExample(
+                        'Success Response',
+                        value={
+                            "user": {"id": 1, "email": "user@example.com", "name": "John Doe"},
+                            "token": "abcd1234efgh5678ijkl9012mnop3456qrst7890"
+                        }
+                    )
+                ]
+            ),
+            401: OpenApiResponse(description='Invalid credentials')
+        },
+        examples=[
+            OpenApiExample(
+                'Login Request',
+                value={"email": "user@example.com", "password": "password123"},
+                request_only=True
+            )
+        ]
+    )
     def post(self, request, *args, **kwargs):
         serializer = self.serializer_class(data=request.data)
         try:
@@ -41,7 +69,7 @@ class LoginAPI(APIView):
         # Delete existing token
         AuthToken.objects.filter(user=user).delete()
         return Response({
-            "user": UserSerializer(user).data,
+            "user": UserSerializer(user, context={'request': request}).data,
             "token": AuthToken.objects.create(user)[1],
         })
 
@@ -92,6 +120,37 @@ class RegisterAPI(APIView):
     '''Register api endpoint -- When a user signs up on their own'''
     permission_classes = (permissions.AllowAny,)
 
+    @extend_schema(
+        request=RegisterUserSerializer,
+        responses={
+            200: OpenApiResponse(
+                description='Registration successful',
+                examples=[
+                    OpenApiExample(
+                        'Success',
+                        value={
+                            "user": {"id": 1, "email": "newuser@example.com", "name": "Jane Doe"},
+                            "token": "abcd1234efgh5678ijkl9012mnop3456qrst7890"
+                        }
+                    )
+                ]
+            ),
+            401: OpenApiResponse(description='Validation error')
+        },
+        examples=[
+            OpenApiExample(
+                'Register Request',
+                value={
+                    "email": "newuser@example.com",
+                    "phone": "233200000000",
+                    "password": "securepass123",
+                    "name": "Jane Doe",
+                    "user_type": "CUSTOMER"
+                },
+                request_only=True
+            )
+        ]
+    )
     def post(self, request, *args, **kwargs):
         serializer = RegisterUserSerializer(data=request.data)
         try:
@@ -111,7 +170,7 @@ class RegisterAPI(APIView):
             user = serializer.save()
         login(request, user)
         return Response({
-            "user": UserSerializer(user).data,
+            "user": UserSerializer(user, context={'request': request}).data,
             "token": AuthToken.objects.create(user)[1],
         })
     
@@ -131,17 +190,31 @@ class UserProfileAPIView(APIView):
     permission_classes = (permissions.IsAuthenticated,)
     serializer_class = UserSerializer
 
+    @extend_schema(
+        responses={200: UserSerializer}
+    )
     def get(self, request, *args, **kwargs):
         '''Get user profile'''
         user = request.user
-        serializer = self.serializer_class(user)
+        serializer = self.serializer_class(user, context={'request': request})
 
         return Response(serializer.data, status=status.HTTP_200_OK)
 
+    @extend_schema(
+        request=UserSerializer,
+        responses={200: UserSerializer},
+        examples=[
+            OpenApiExample(
+                'Update Profile',
+                value={"name": "John Updated", "address": "New Address 123"},
+                request_only=True
+            )
+        ]
+    )
     def put(self, request, *args, **kwargs):
         '''Update user profile'''
         user = request.user
-        serializer = self.serializer_class(user, data=request.data, partial=True)
+        serializer = self.serializer_class(user, data=request.data, partial=True, context={'request': request})
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data, status=status.HTTP_200_OK)
@@ -154,6 +227,29 @@ class ChangePasswordAPIView(APIView):
     permission_classes = (permissions.IsAuthenticated,)
     serializer_class = ChangePasswordSerializer
 
+    @extend_schema(
+        request=ChangePasswordSerializer,
+        responses={
+            200: OpenApiResponse(
+                description='Password changed',
+                examples=[
+                    OpenApiExample('Success', value={"status": "success"})
+                ]
+            ),
+            400: OpenApiResponse(description='Wrong password or validation error')
+        },
+        examples=[
+            OpenApiExample(
+                'Change Password',
+                value={
+                    "old_password": "oldpass123",
+                    "new_password": "newpass456",
+                    "confirm_password": "newpass456"
+                },
+                request_only=True
+            )
+        ]
+    )
     def post(self, request, *args, **kwargs):
         '''Change user password'''
         user = request.user
@@ -192,3 +288,54 @@ class ResetPasswordAPIView(APIView):
             user.save()
             return Response({'status': 'success'}, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class UserProfileAvatarAPIView(APIView):
+    '''API endpoint to update user profile picture (avatar)'''
+    permission_classes = (permissions.IsAuthenticated,)
+    parser_classes = (MultiPartParser, FormParser)
+
+    @extend_schema(
+        request={
+            'multipart/form-data': {
+                'type': 'object',
+                'properties': {
+                    'avatar': {
+                        'type': 'string',
+                        'format': 'binary'
+                    }
+                }
+            }
+        },
+        responses={
+            200: OpenApiResponse(
+                description='Profile picture updated',
+                examples=[
+                    OpenApiExample(
+                        'Success',
+                        value={
+                            "status": "success",
+                            "message": "Profile picture updated successfully",
+                            "avatar": "/media/avatars/user_profile.jpg"
+                        }
+                    )
+                ]
+            ),
+            400: OpenApiResponse(description='Invalid file or validation error')
+        }
+    )
+    def patch(self, request, *args, **kwargs):
+        user = request.user
+        serializer = UserAvatarSerializer(user, data=request.data, partial=True, context={'request': request})
+        if serializer.is_valid():
+            serializer.save()
+            return Response({
+                'status': 'success',
+                'message': 'Profile picture updated successfully',
+                'avatar': serializer.data['avatar']
+            }, status=status.HTTP_200_OK)
+        return Response({
+            'status': 'error',
+            'errors': serializer.errors,
+            'error_message': str(next(iter(serializer.errors.values()))[0]) if serializer.errors else 'Invalid data',
+        }, status=status.HTTP_400_BAD_REQUEST)

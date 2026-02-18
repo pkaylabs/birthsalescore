@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib.auth import authenticate
 from rest_framework import serializers
 
@@ -5,10 +6,54 @@ from accounts.models import *
 from apis.models import *
 
 
+def _to_absolute_url(*, request, url: str | None) -> str | None:
+    if not url:
+        return None
+    if url.startswith('http://') or url.startswith('https://'):
+        return url
+    if request is not None:
+        return request.build_absolute_uri(url)
+    base_url = getattr(settings, 'PUBLIC_BASE_URL', None)
+    if base_url:
+        return base_url.rstrip('/') + '/' + url.lstrip('/')
+    return url
+
+
+
 class UserSerializer(serializers.ModelSerializer):
+    avatar = serializers.SerializerMethodField()
+
+    def get_avatar(self, obj):
+        request = self.context.get('request')
+        if not getattr(obj, 'avatar', None):
+            return None
+        try:
+            url = obj.avatar.url
+        except Exception:
+            return None
+        return _to_absolute_url(request=request, url=url)
+
     class Meta:
         model = User
         exclude = ['password', 'groups', 'user_permissions']
+
+
+class UserAvatarSerializer(serializers.ModelSerializer):
+    avatar = serializers.SerializerMethodField()
+
+    def get_avatar(self, obj):
+        request = self.context.get('request')
+        if not getattr(obj, 'avatar', None):
+            return None
+        try:
+            url = obj.avatar.url
+        except Exception:
+            return None
+        return _to_absolute_url(request=request, url=url)
+
+    class Meta:
+        model = User
+        fields = ['avatar']
 
 
 class LoginSerializer(serializers.Serializer):

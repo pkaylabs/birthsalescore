@@ -15,6 +15,7 @@ from .auth import (
 	MobileUserProfileAPIView,
 	MobileChangePasswordAPI,
 	MobileContactSupportAPI,
+	MobileUserAvatarUpdateAPI,
 )
 from knox.views import LogoutView, LogoutAllView
 
@@ -35,6 +36,7 @@ urlpatterns = [
 	path('profile/', MobileUserProfileAPIView.as_view(), name='profile'),
 	path('changepassword/', MobileChangePasswordAPI.as_view(), name='change_password'),
 	path('contactsupport/', MobileContactSupportAPI.as_view(), name='contact_support'),
+	path('profile/avatar/', MobileUserAvatarUpdateAPI.as_view(), name='profile_avatar_update'),
 	# Logout only current token
 	path('logout/', LogoutView.as_view(), name='logout_current'),
 	# Logout all tokens for the user
