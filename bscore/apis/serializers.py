@@ -138,11 +138,40 @@ class ProductCategorySerializer(serializers.ModelSerializer):
 
 class ProductSerializer(serializers.ModelSerializer):
     vendor_name = serializers.ReadOnlyField()
+    images = serializers.SerializerMethodField()
+
+    def get_images(self, obj):
+        # Return extra images with absolute URLs.
+        # Use serializer context so FileField can build absolute URLs when request is available.
+        images_qs = getattr(obj, 'images', None)
+        if images_qs is None:
+            return []
+        serializer = ProductImagesSerializer(images_qs.all(), many=True, context=self.context)
+        return serializer.data
+
+    def to_representation(self, instance):
+        rep = super().to_representation(instance)
+        request = self.context.get('request')
+        # Product.image comes out as a URL string (or null). Convert to absolute.
+        rep['image'] = _to_absolute_url(request=request, url=rep.get('image'))
+        return rep
     class Meta:
         model = Product
         fields = '__all__'
 
 class ProductImagesSerializer(serializers.ModelSerializer):
+    image = serializers.SerializerMethodField()
+
+    def get_image(self, obj):
+        request = self.context.get('request')
+        if not getattr(obj, 'image', None):
+            return None
+        try:
+            url = obj.image.url
+        except Exception:
+            return None
+        return _to_absolute_url(request=request, url=url)
+
     class Meta:
         model = ProductImages
         fields = '__all__'

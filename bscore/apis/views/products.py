@@ -31,7 +31,7 @@ class ProductAPIView(APIView):
         else:
             products = Product.objects.filter(is_active=True).order_by('-created_at')
 
-        serializer = ProductSerializer(products, many=True)
+        serializer = ProductSerializer(products, many=True, context={"request": request})
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def post(self, request, *args, **kwargs):
@@ -45,7 +45,7 @@ class ProductAPIView(APIView):
         # check if vendor has active subscription and can create or view product
         if not (vendor and vendor.has_active_subscription() and vendor.can_create_or_view_product()):
             return Response({"message": "Vendor profile not found or subscription expired"}, status=status.HTTP_400_BAD_REQUEST)
-        serializer = ProductSerializer(data=request.data)
+        serializer = ProductSerializer(data=request.data, context={"request": request})
         if serializer.is_valid():
             if vendor:
                 serializer.validated_data['vendor'] = vendor
@@ -71,7 +71,7 @@ class ProductAPIView(APIView):
         if not product:
             return Response({"message": "Product not found"}, status=status.HTTP_404_NOT_FOUND)
         
-        serializer = ProductSerializer(product, data=request.data, partial=True)
+        serializer = ProductSerializer(product, data=request.data, partial=True, context={"request": request})
         if serializer.is_valid():
             serializer.save()
             return Response({"message": "Product updated successfully", "product": serializer.data}, status=status.HTTP_200_OK)
@@ -129,7 +129,7 @@ class CustomerProductsAPIView(APIView):
             many = True
         if query and not products:
             return Response({"message": "No products found"}, status=status.HTTP_404_NOT_FOUND)
-        serializer = ProductSerializer(products, many=many)
+        serializer = ProductSerializer(products, many=many, context={"request": request})
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
@@ -187,7 +187,7 @@ class ProductSearchAPIView(APIView):
         else:
             # get all products
             products = Product.objects.filter(is_published=True).order_by('-created_at')
-        serializer = ProductSerializer(products, many=True)
+        serializer = ProductSerializer(products, many=True, context={"request": request})
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 class ProductCategoryAPIView(APIView):

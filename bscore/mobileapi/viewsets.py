@@ -43,7 +43,7 @@ class MobileHomepageAPIView(APIView):
 		data = {
 			"categories": ProductCategorySerializer(categories, many=True).data,
 			"featured": BannerSerializer(featured, many=True).data,
-			"products": ProductSerializer(products_top, many=True).data,
+			"products": ProductSerializer(products_top, many=True, context={"request": request}).data,
 		}
 		return Response(data, status=status.HTTP_200_OK)
 
