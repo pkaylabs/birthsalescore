@@ -54,12 +54,17 @@ def debit_credit_vendor_wallet(sender, instance, created, **kwargs):
     '''Debit/credit vendor wallet'''
     if not created:
         '''only check for debit/credit on update'''
+        # Orders may contain multiple vendors; settlements are handled via Payouts.
+        if instance.order is not None:
+            return
         if instance.vendor_credited_debited:
             # vendor has already been credited/debited
             return
         else:
             # check if payment is successful and not already credited/debited
             if instance.status_code == PaymentStatusCode.SUCCESS.value:
+                if not instance.vendor:
+                    return
                 # check if payment is credit or debit
                 if instance.payment_type == PaymentType.CREDIT.value:
                     # it was a cashout... debit vendor wallet

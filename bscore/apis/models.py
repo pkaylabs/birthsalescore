@@ -98,7 +98,7 @@ class Order(models.Model):
     Model representing an order.
     """
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='orders')
-    # order items will be limited: only Items belonging to the same vendor can be ordered at a time.
+    # Order can contain items from multiple vendors.
     items = models.ManyToManyField(OrderItem, related_name='orders')
     location = models.CharField(max_length=255, blank=True, null=True)
     customer_phone = models.CharField(max_length=15, blank=True, null=True)
@@ -370,5 +370,62 @@ class ContactMessage(models.Model):
 
     def __str__(self):
         return f"{self.name} - {self.email}"
+
+
+class Payout(models.Model):
+    """Tracks vendor settlement for paid order items (grouped per vendor per order)."""
+
+    PAYOUT_STATUS_CHOICES = [
+        ('PENDING', 'Pending'),
+        ('APPROVED', 'Approved'),
+        ('REJECTED', 'Rejected'),
+    ]
+
+    order = models.ForeignKey(Order, on_delete=models.PROTECT, related_name='payouts')
+    payment = models.ForeignKey(Payment, on_delete=models.PROTECT, related_name='payouts', null=True, blank=True)
+    vendor = models.ForeignKey(Vendor, on_delete=models.PROTECT, related_name='payouts')
+    amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    payment_status = models.CharField(max_length=10, default=PaymentStatus.PENDING.value)
+    payout_status = models.CharField(max_length=10, choices=PAYOUT_STATUS_CHOICES, default='PENDING')
+    is_settled = models.BooleanField(default=False)
+    settled_at = models.DateTimeField(blank=True, null=True)
+    settled_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='settled_payouts')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['order', 'vendor'], name='unique_payout_per_order_vendor'),
+        ]
+
+    @property
+    def vendor_name(self) -> str:
+        return self.vendor.vendor_name if self.vendor else ""
+
+    @property
+    def vendor_id(self) -> str:
+        return self.vendor.vendor_id if self.vendor else ""
+
+    def __str__(self):
+        return f"Payout {self.id} - {self.vendor_name} - Order {self.order_id}"
+
+
+class PayoutItem(models.Model):
+    """Line-item snapshot for a payout."""
+    payout = models.ForeignKey(Payout, on_delete=models.CASCADE, related_name='items')
+    order_item = models.ForeignKey(OrderItem, on_delete=models.PROTECT, related_name='payout_items')
+    product = models.ForeignKey(Product, on_delete=models.PROTECT, related_name='payout_items')
+    quantity = models.PositiveIntegerField(default=1)
+    unit_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    line_total = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['payout', 'order_item'], name='unique_payout_item_per_order_item'),
+        ]
+
+    def __str__(self):
+        return f"PayoutItem {self.id} - {self.product.name if self.product else ''}"
 
 

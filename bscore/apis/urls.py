@@ -40,5 +40,8 @@ urlpatterns += [
     path('paymentcallback/', views.PaymentCallbackAPI.as_view(), name='payment_callback'),
     path('paymentstatus/', views.PaymentStatusCheckAPI.as_view(), name='payment_status'),
     path('paystack/verify/', views.PaystackVerifyAPI.as_view(), name='paystack_verify'),
+    path('payouts/', views.PayoutsAPIView.as_view(), name='payouts'),
+    path('payouts/approve/', views.ApprovePayoutAPIView.as_view(), name='payouts_approve'),
+    path('payouts/approve-all/', views.ApproveAllPendingPayoutsAPIView.as_view(), name='payouts_approve_all'),
     path('banners/', views.BannerAPIView.as_view(), name='banners'),
 ]

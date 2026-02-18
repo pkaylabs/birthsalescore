@@ -10,7 +10,7 @@ from rest_framework import status
 from rest_framework.response import Response
 
 from accounts.models import Vendor, Wallet
-from apis.models import Payment
+from apis.models import Payment, Payout, PayoutItem
 from apis.serializers import PaymentSerializer
 from bscore import settings
 from bscore.utils.const import PaymentMethod, PaymentType, PaymentStatus, PaymentStatusCode
@@ -164,21 +164,33 @@ def execute_momo_transaction(request, type, user=None, order=None, booking=None,
             "api_status": 400
         }
     user = request.user if user is None else user
-    if vendor is None:
-        return {
-            "transaction_status": "failed",
-            "message": "User is not a vendor",
-            "api_status": 400
-        }
-    # check if vendor has a wallet
-    if vendor.get_wallet() is None:
-        return {
-            "transaction_status": "failed",
-            "message": "User does not have a wallet",
-            "api_status": 400
-        }
-    # print("Before wallet = vendor.get_wallet()")
-    wallet = vendor.get_wallet()
+
+    # Vendor is required for cashout (CREDIT) and for non-order DEBIT flows.
+    wallet = None
+    if withdrawal or type == PaymentType.CREDIT.value:
+        if vendor is None:
+            return {
+                "transaction_status": "failed",
+                "message": "Vendor is required",
+                "api_status": 400
+            }
+        if vendor.get_wallet() is None:
+            return {
+                "transaction_status": "failed",
+                "message": "User does not have a wallet",
+                "api_status": 400
+            }
+        wallet = vendor.get_wallet()
+    else:
+        # For order payments, vendor may be None (multi-vendor orders).
+        if (order is None) and (vendor is None):
+            return {
+                "transaction_status": "failed",
+                "message": "Vendor is required",
+                "api_status": 400
+            }
+        if vendor is not None and vendor.get_wallet() is not None:
+            wallet = vendor.get_wallet()
     # print("After wallet = vendor.get_wallet()")
     print("Before get_payment_amount")
     amount_res = get_payment_amount(request=request, cashout=withdrawal, subscription=subscription, order=order, booking=booking)
@@ -227,9 +239,9 @@ def execute_momo_transaction(request, type, user=None, order=None, booking=None,
     transaction = {
         'payment_id': data.get('transaction_id'),
         'status_code': transaction_status['status_code'],
-        'status': transaction_status['message'],
+        'status': PaymentStatus.SUCCESS.value if transaction_is_successful else PaymentStatus.PENDING.value,
         'order': order,
-        'vendor': vendor,
+        'vendor': vendor if (order is None) else None,
         'booking': booking,
         'subscription': subscription,
         'user': user,
@@ -248,16 +260,21 @@ def execute_momo_transaction(request, type, user=None, order=None, booking=None,
         if type == PaymentType.CREDIT.value:
             # it means the vendor did a cashout
             # debit vendor wallet
-            success = wallet.debit_wallet(amount)
+            success = wallet.debit_wallet(amount) if wallet else False
             if success:
                 transaction.vendor_credited_debited = True
                 transaction.save()
         elif type == PaymentType.DEBIT.value:
-            # it means a client paid for a service/product/order
-            # credit vendor wallet
-            wallet.credit_wallet(amount)
-            transaction.vendor_credited_debited = True
-            transaction.save()
+            # It means a client paid for a service/product/order.
+            # For order payments, do NOT immediately credit vendor wallet; create payouts per vendor.
+            if order is not None:
+                create_payouts_for_order_payment(transaction)
+            else:
+                # credit vendor wallet (single-vendor flows like booking/subscription)
+                if wallet:
+                    wallet.credit_wallet(amount)
+                    transaction.vendor_credited_debited = True
+                    transaction.save()
         else:
             print("CAN'T DETECT TRANSACTION TYPE")
         return {
@@ -273,6 +290,60 @@ def execute_momo_transaction(request, type, user=None, order=None, booking=None,
             "transaction": serializer.data,
             "api_status": status.HTTP_201_CREATED
         }
+
+
+def create_payouts_for_order_payment(payment: Payment):
+    """Create/refresh Payout records per vendor for a successful order payment."""
+    if not payment or not payment.order:
+        return []
+    if payment.status_code != PaymentStatusCode.SUCCESS.value and payment.status != PaymentStatus.SUCCESS.value:
+        return []
+
+    order = payment.order
+    payouts = []
+    vendor_totals: dict[int, decimal.Decimal] = {}
+    vendor_items: dict[int, list[OrderItem]] = {}
+
+    for item in order.items.select_related('product', 'product__vendor').all():
+        vendor = getattr(item.product, 'vendor', None)
+        if not vendor:
+            continue
+        vendor_totals.setdefault(vendor.id, decimal.Decimal('0'))
+        vendor_totals[vendor.id] += decimal.Decimal(item.price)
+        vendor_items.setdefault(vendor.id, []).append(item)
+
+    for vendor_id, total in vendor_totals.items():
+        vendor = Vendor.objects.filter(id=vendor_id).first()
+        if not vendor:
+            continue
+        payout, _ = Payout.objects.get_or_create(
+            order=order,
+            vendor=vendor,
+            defaults={
+                'payment': payment,
+                'amount': total,
+                'payment_status': payment.status,
+            }
+        )
+        # Update linkage/status/amount if payout already existed
+        payout.payment = payment
+        payout.payment_status = payment.status
+        payout.amount = total
+        payout.save()
+
+        for oi in vendor_items.get(vendor_id, []):
+            PayoutItem.objects.get_or_create(
+                payout=payout,
+                order_item=oi,
+                defaults={
+                    'product': oi.product,
+                    'quantity': oi.quantity,
+                    'unit_price': oi.product.price,
+                    'line_total': oi.price,
+                }
+            )
+        payouts.append(payout)
+    return payouts
 
 
 # ----------------------
@@ -312,7 +383,8 @@ def initiate_paystack_payment(request, user=None, order=None, booking=None, subs
     Creates a pending Payment record with method PAYSTACK and returns authorization URL + reference.
     """
     user = request.user if user is None else user
-    if vendor is None:
+    # Vendor can be None for multi-vendor order payments.
+    if vendor is None and order is None:
         return {
             "status": "failed",
             "message": "Vendor not found",
@@ -358,7 +430,7 @@ def initiate_paystack_payment(request, user=None, order=None, booking=None, subs
         "status_code": None,
         "status": PaymentStatus.PENDING.value,
         "order": order,
-        "vendor": vendor,
+        "vendor": vendor if (order is None) else None,
         "booking": booking,
         "subscription": subscription,
         "user": user,
@@ -400,12 +472,16 @@ def finalize_paystack_payment(reference: str):
         if status_text == "success":
             payment.status = PaymentStatus.SUCCESS.value
             payment.status_code = PaymentStatusCode.SUCCESS.value
-            # Credit vendor wallet
-            vendor = payment.vendor
-            if vendor and vendor.get_wallet():
-                wallet = vendor.get_wallet()
-                wallet.credit_wallet(payment.amount)
-                payment.vendor_credited_debited = True
+            # For order payments, create payouts instead of immediate vendor credit.
+            if payment.order is not None:
+                create_payouts_for_order_payment(payment)
+            else:
+                # Credit vendor wallet for single-vendor flows
+                vendor = payment.vendor
+                if vendor and vendor.get_wallet():
+                    wallet = vendor.get_wallet()
+                    wallet.credit_wallet(payment.amount)
+                    payment.vendor_credited_debited = True
         elif status_text == "failed":
             payment.status = PaymentStatus.FAILED.value
             payment.status_code = PaymentStatusCode.FAILED.value

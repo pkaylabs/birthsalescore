@@ -67,3 +67,16 @@ class BannerAdmin(admin.ModelAdmin):
 class ContactMessageAdmin(admin.ModelAdmin):
     list_display = ('name', 'email', 'phone', 'status', 'created_at')
     search_fields = ('name', 'email', 'phone', 'message')
+
+
+@admin.register(Payout)
+class PayoutAdmin(admin.ModelAdmin):
+    list_display = ('id', 'order', 'vendor', 'amount', 'payment_status', 'payout_status', 'is_settled', 'created_at')
+    search_fields = ('order__id', 'vendor__vendor_id', 'vendor__vendor_name')
+    list_filter = ('payout_status', 'is_settled', 'payment_status')
+
+
+@admin.register(PayoutItem)
+class PayoutItemAdmin(admin.ModelAdmin):
+    list_display = ('id', 'payout', 'product', 'quantity', 'unit_price', 'line_total', 'created_at')
+    search_fields = ('payout__id', 'product__name', 'order_item__id')

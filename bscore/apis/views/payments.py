@@ -99,8 +99,8 @@ class MakePaymentAPI(APIView):
                 return Response({
                     "message": "Order not found",
                 }, status=status.HTTP_400_BAD_REQUEST)
-            vendor = Vendor.objects.filter(
-                vendor_id=order.vendor_id).first()
+            # Orders can contain items from multiple vendors; do not force a single vendor.
+            vendor = None
         elif booking:
             booking = ServiceBooking.objects.filter(id=booking).first()
             if booking is None:
@@ -108,7 +108,7 @@ class MakePaymentAPI(APIView):
                     "message": "Booking not found",
                 }, status=status.HTTP_400_BAD_REQUEST)
             vendor = booking.service.vendor
-        if vendor is None:
+        if vendor is None and not order:
             return Response({
                 "message": "Vendor not found",
             }, status=status.HTTP_400_BAD_REQUEST)
@@ -160,13 +160,13 @@ class MakePaystackPaymentAPI(APIView):
         elif order:
             if order is None:
                 return Response({"message": "Order not found"}, status=status.HTTP_400_BAD_REQUEST)
-            vendor = Vendor.objects.filter(vendor_id=order.vendor_id).first()
+            vendor = None
         elif booking:
             if booking is None:
                 return Response({"message": "Booking not found"}, status=status.HTTP_400_BAD_REQUEST)
             vendor = booking.service.vendor
 
-        if vendor is None:
+        if vendor is None and not order:
             return Response({"message": "Vendor not found"}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
