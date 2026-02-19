@@ -144,6 +144,7 @@ class ProductSerializer(serializers.ModelSerializer):
     images = serializers.SerializerMethodField()
     rating = serializers.SerializerMethodField()
     ratings_count = serializers.SerializerMethodField()
+    customer_can_rate_product = serializers.SerializerMethodField()
 
     def get_rating(self, obj):
         # Prefer prefetched ratings to avoid extra queries when available.
@@ -163,6 +164,32 @@ class ProductSerializer(serializers.ModelSerializer):
             return len(cache['ratings'])
         agg = obj.ratings.aggregate(cnt=Count('id'))
         return int(agg.get('cnt') or 0)
+
+    def get_customer_can_rate_product(self, obj):
+        request = self.context.get('request')
+        if request is None:
+            return False
+
+        user = getattr(request, 'user', None)
+        if not user or not getattr(user, 'is_authenticated', False):
+            return False
+
+        # Only customers can rate.
+        if getattr(user, 'user_type', None) != 'CUSTOMER':
+            return False
+
+        cache_key = '_customer_ordered_product_ids'
+        product_ids = self.context.get(cache_key)
+        if product_ids is None:
+            product_ids = set(
+                Order.objects.filter(user=user)
+                .exclude(status='Cancelled')
+                .values_list('items__product_id', flat=True)
+                .distinct()
+            )
+            self.context[cache_key] = product_ids
+
+        return obj.id in product_ids
 
     def _normalize_str_list(self, value):
         if value is None:
