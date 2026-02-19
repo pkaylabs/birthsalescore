@@ -1,3 +1,5 @@
+import json
+
 from django.conf import settings
 from django.contrib.auth import authenticate
 from rest_framework import serializers
@@ -140,6 +142,49 @@ class ProductSerializer(serializers.ModelSerializer):
     vendor_name = serializers.ReadOnlyField()
     images = serializers.SerializerMethodField()
 
+    def _normalize_str_list(self, value):
+        if value is None:
+            return []
+        if isinstance(value, str):
+            value = value.strip()
+            if not value:
+                return []
+            # Accept JSON list string or comma-separated values.
+            try:
+                loaded = json.loads(value)
+                if isinstance(loaded, list):
+                    value = loaded
+                else:
+                    value = [value]
+            except Exception:
+                value = [v.strip() for v in value.split(',')]
+
+        if isinstance(value, (tuple, list)):
+            normalized = []
+            seen = set()
+            for item in value:
+                if item is None:
+                    continue
+                s = str(item).strip()
+                if not s:
+                    continue
+                key = s.lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                normalized.append(s)
+            return normalized
+
+        return [str(value).strip()] if str(value).strip() else []
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        if 'available_colors' in attrs:
+            attrs['available_colors'] = self._normalize_str_list(attrs.get('available_colors'))
+        if 'available_sizes' in attrs:
+            attrs['available_sizes'] = self._normalize_str_list(attrs.get('available_sizes'))
+        return attrs
+
     def get_images(self, obj):
         # Return extra images with absolute URLs.
         # Use serializer context so FileField can build absolute URLs when request is available.
@@ -154,6 +199,9 @@ class ProductSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         # Product.image comes out as a URL string (or null). Convert to absolute.
         rep['image'] = _to_absolute_url(request=request, url=rep.get('image'))
+        # Only return features if present.
+        rep['available_colors'] = rep.get('available_colors') or None
+        rep['available_sizes'] = rep.get('available_sizes') or None
         return rep
     class Meta:
         model = Product

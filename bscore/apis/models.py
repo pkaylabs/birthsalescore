@@ -31,6 +31,9 @@ class Product(models.Model):
     is_published = models.BooleanField(default=False)
     vendor = models.ForeignKey(Vendor, on_delete=models.CASCADE, related_name='products', null=True, blank=True)
     image = models.ImageField(upload_to='products/', blank=True, null=True)
+    # Optional extra features. Vendors can configure these per product.
+    available_colors = models.JSONField(default=list, blank=True)
+    available_sizes = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
