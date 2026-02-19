@@ -23,6 +23,13 @@ class ProductReviewAdmin(admin.ModelAdmin):
     list_display = ('product', 'user', 'rating', 'created_at')
     search_fields = ('product__name', 'user__vendor_name')
 
+
+@admin.register(ProductRating)
+class ProductRatingAdmin(admin.ModelAdmin):
+    list_display = ('product', 'user', 'rating', 'created_at')
+    search_fields = ('product__name', 'user__name', 'user__email', 'user__phone')
+    list_filter = ('rating',)
+
 @admin.register(OrderItem)
 class OrderItemAdmin(admin.ModelAdmin):
     list_display = ('product', 'quantity', 'price')

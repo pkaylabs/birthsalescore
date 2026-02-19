@@ -2,6 +2,7 @@ import json
 
 from django.conf import settings
 from django.contrib.auth import authenticate
+from django.db.models import Avg, Count
 from rest_framework import serializers
 
 from accounts.models import *
@@ -141,6 +142,27 @@ class ProductCategorySerializer(serializers.ModelSerializer):
 class ProductSerializer(serializers.ModelSerializer):
     vendor_name = serializers.ReadOnlyField()
     images = serializers.SerializerMethodField()
+    rating = serializers.SerializerMethodField()
+    ratings_count = serializers.SerializerMethodField()
+
+    def get_rating(self, obj):
+        # Prefer prefetched ratings to avoid extra queries when available.
+        cache = getattr(obj, '_prefetched_objects_cache', {}) or {}
+        if 'ratings' in cache:
+            ratings = [r.rating for r in cache['ratings'] if getattr(r, 'rating', None) is not None]
+            if not ratings:
+                return None
+            return round(sum(ratings) / len(ratings), 2)
+        agg = obj.ratings.aggregate(avg=Avg('rating'))
+        avg = agg.get('avg')
+        return round(float(avg), 2) if avg is not None else None
+
+    def get_ratings_count(self, obj):
+        cache = getattr(obj, '_prefetched_objects_cache', {}) or {}
+        if 'ratings' in cache:
+            return len(cache['ratings'])
+        agg = obj.ratings.aggregate(cnt=Count('id'))
+        return int(agg.get('cnt') or 0)
 
     def _normalize_str_list(self, value):
         if value is None:
@@ -228,6 +250,15 @@ class ProductReviewSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProductReview
         fields = '__all__'
+
+
+class ProductRatingSerializer(serializers.ModelSerializer):
+    user_name = serializers.ReadOnlyField(source='user.name')
+
+    class Meta:
+        model = ProductRating
+        fields = '__all__'
+        read_only_fields = ('user', 'created_at', 'updated_at')
 
 class OrderItemSerializer(serializers.ModelSerializer):
     product_name = serializers.ReadOnlyField()

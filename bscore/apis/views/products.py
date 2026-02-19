@@ -5,10 +5,11 @@ from rest_framework.views import APIView
 
 from accounts.models import Vendor
 from apis.models import (Order, Product, ProductCategory, Service,
-                         ServiceBooking)
+                    ServiceBooking, ProductRating)
 from apis.serializers import (OrderSerializer, PlaceOrderSerializer,
                               ProductCategorySerializer, ProductSerializer,
-                              ServiceBookingSerializer, ServiceSerializer)
+                        ServiceBookingSerializer, ServiceSerializer,
+                        ProductRatingSerializer)
 from bscore.utils.const import UserType
 
 
@@ -189,6 +190,59 @@ class ProductSearchAPIView(APIView):
             products = Product.objects.filter(is_published=True).order_by('-created_at')
         serializer = ProductSerializer(products, many=True, context={"request": request})
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class ProductRatingsAPIView(APIView):
+    """List ratings for a product and allow customers to create/update their rating."""
+
+    permission_classes = (permissions.AllowAny,)
+
+    def get(self, request, *args, **kwargs):
+        product_id = request.query_params.get('product_id')
+        if not product_id:
+            return Response({"message": "product_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        ratings = ProductRating.objects.filter(product_id=product_id).select_related('user').order_by('-created_at')
+        serializer = ProductRatingSerializer(ratings, many=True, context={"request": request})
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return Response({"message": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
+        if getattr(request.user, 'user_type', None) != UserType.CUSTOMER.value:
+            return Response({"message": "Only customers can rate products"}, status=status.HTTP_403_FORBIDDEN)
+
+        serializer = ProductRatingSerializer(data=request.data, context={"request": request})
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        product = serializer.validated_data.get('product')
+        rating_value = serializer.validated_data.get('rating')
+        comment = serializer.validated_data.get('comment')
+
+        has_ordered = Order.objects.filter(
+            user=request.user,
+            items__product=product,
+        ).exclude(status='Cancelled').exists()
+
+        if not has_ordered:
+            return Response(
+                {"message": "Only customers who have ordered this product can rate it"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        rating_obj, _ = ProductRating.objects.update_or_create(
+            product=product,
+            user=request.user,
+            defaults={"rating": rating_value, "comment": comment},
+        )
+        return Response(ProductRatingSerializer(rating_obj, context={"request": request}).data, status=status.HTTP_200_OK)
+
+    def put(self, request, *args, **kwargs):
+        return self.post(request, *args, **kwargs)
+
+    def patch(self, request, *args, **kwargs):
+        return self.post(request, *args, **kwargs)
 
 class ProductCategoryAPIView(APIView):
     '''API Endpoints for Product Categories'''

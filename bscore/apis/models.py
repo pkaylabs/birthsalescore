@@ -1,5 +1,6 @@
 import uuid
 
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 from accounts.models import Subscription, User, Vendor
@@ -73,6 +74,25 @@ class ProductReview(models.Model):
 
     def __str__(self):
         return f"Review for {self.product.name} by {self.user.name}"
+
+
+class ProductRating(models.Model):
+    """Product rating left by a user (stars 1-5) with an optional comment."""
+
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='ratings')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='product_ratings')
+    rating = models.PositiveSmallIntegerField(validators=[MinValueValidator(1), MaxValueValidator(5)])
+    comment = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['product', 'user'], name='unique_product_rating_per_user'),
+        ]
+
+    def __str__(self):
+        return f"Rating {self.rating} for {self.product_id} by {self.user_id}"
 
 class OrderItem(models.Model):
     """

@@ -33,6 +33,7 @@ urlpatterns += [
     path('customerproducts/', views.CustomerProductsAPIView.as_view(), name='customer_products'),
     path('customerservices/', views.CustomerServicesAPIView.as_view(), name='customer_services'),
     path('searchproducts/', views.ProductSearchAPIView.as_view(), name='search'),
+    path('productratings/', views.ProductRatingsAPIView.as_view(), name='product_ratings'),
     path('cashout/', views.VendorCashoutAPI.as_view(), name='cashout'),
     path('payments/', views.PaymentAPIView.as_view(), name='payments'),
     path('makepayment/', views.MakePaymentAPI.as_view(), name='make_payment'),
