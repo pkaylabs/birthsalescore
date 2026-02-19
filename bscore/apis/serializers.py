@@ -254,6 +254,48 @@ class PlaceOrderSerializer(serializers.ModelSerializer):
     class Meta:
         model = Order
         fields = ['user', 'items', 'status', 'location', 'customer_phone']
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        items = attrs.get('items') or []
+
+        errors = []
+        for idx, item in enumerate(items):
+            product = item.get('product')
+            if not product:
+                errors.append({"index": idx, "detail": "product is required"})
+                continue
+
+            chosen_color = item.get('color')
+            chosen_size = item.get('size')
+
+            if chosen_color:
+                available = getattr(product, 'available_colors', None) or []
+                if available:
+                    available_lower = {str(c).strip().lower() for c in available if str(c).strip()}
+                    if str(chosen_color).strip().lower() not in available_lower:
+                        errors.append({
+                            "index": idx,
+                            "field": "color",
+                            "detail": "Invalid color for product",
+                            "allowed": available,
+                        })
+
+            if chosen_size:
+                available = getattr(product, 'available_sizes', None) or []
+                if available:
+                    available_lower = {str(s).strip().lower() for s in available if str(s).strip()}
+                    if str(chosen_size).strip().lower() not in available_lower:
+                        errors.append({
+                            "index": idx,
+                            "field": "size",
+                            "detail": "Invalid size for product",
+                            "allowed": available,
+                        })
+
+        if errors:
+            raise serializers.ValidationError({"items": errors})
+        return attrs
     
     def create(self, validated_data):
         items_data = validated_data.pop('items')
@@ -262,9 +304,13 @@ class PlaceOrderSerializer(serializers.ModelSerializer):
         for item_data in items_data:
             product = item_data['product']
             quantity = item_data.get('quantity', 1)
+            color = item_data.get('color')
+            size = item_data.get('size')
             order_item = OrderItem.objects.create(
                 product=product,
-                quantity=quantity
+                quantity=quantity,
+                color=color,
+                size=size,
             )
             order_items.append(order_item)
         
