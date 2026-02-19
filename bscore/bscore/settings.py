@@ -190,3 +190,7 @@ PAYSTACK_CALLBACK_URL = os.getenv('PAYSTACK_CALLBACK_URL')
 
 # Support contact settings
 SUPPORT_EMAIL = os.getenv('SUPPORT_EMAIL', DEFAULT_FROM_EMAIL)
+
+# Video ads
+# Show a video ad to an authenticated user if the last shown time is >= this interval.
+VIDEO_AD_INTERVAL_SECONDS = int(os.getenv('VIDEO_AD_INTERVAL_SECONDS', '60'))

@@ -6,3 +6,4 @@ from .payments import *
 from .payouts import *
 from .products import *
 from .banner import *
+from .video_ads import *

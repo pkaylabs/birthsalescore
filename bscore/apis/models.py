@@ -204,6 +204,30 @@ class Banner(models.Model):
         return self.title
 
 
+class VideoAd(models.Model):
+    """Admin-uploaded video ad shown on homepage at a fixed interval."""
+
+    title = models.CharField(max_length=255, blank=True, null=True)
+    video = models.FileField(upload_to='video_ads/')
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.title or f"VideoAd {self.id}"
+
+
+class UserVideoAdState(models.Model):
+    """Tracks when a user last saw a homepage video ad."""
+
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='video_ad_state')
+    last_shown_at = models.DateTimeField(blank=True, null=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"UserVideoAdState {self.user_id}"
+
+
 class Ad(models.Model):
     '''Model representing an Ad'''
     title = models.CharField(max_length=150)

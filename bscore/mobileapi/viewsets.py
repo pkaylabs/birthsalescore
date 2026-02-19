@@ -1,3 +1,5 @@
+from django.conf import settings
+from django.utils import timezone
 from django.db.models import Q
 from rest_framework import permissions, status, viewsets
 from rest_framework.response import Response
@@ -6,9 +8,11 @@ from rest_framework.views import APIView
 from accounts.models import Vendor
 from apis.models import (
 	Banner,
+	UserVideoAdState,
 	Product,
 	ProductCategory,
 	Service,
+	VideoAd,
 )
 from apis.serializers import (
 	BannerSerializer,
@@ -27,6 +31,23 @@ class MobileHomepageAPIView(APIView):
 	permission_classes = [permissions.AllowAny]
 
 	def get(self, request, *args, **kwargs):
+		video_ad_url = None
+		if request.user.is_authenticated:
+			interval = getattr(settings, 'VIDEO_AD_INTERVAL_SECONDS', 60)
+			state, _ = UserVideoAdState.objects.get_or_create(user=request.user)
+			now = timezone.now()
+
+			if state.last_shown_at is None or (now - state.last_shown_at).total_seconds() >= interval:
+				ad = VideoAd.objects.filter(is_active=True).order_by('?').first()
+				if ad:
+					try:
+						url = ad.video.url
+					except Exception:
+						url = None
+					if url:
+						video_ad_url = request.build_absolute_uri(url)
+						state.last_shown_at = now
+						state.save(update_fields=['last_shown_at', 'updated_at'])
 		# Featured content: use active banners as featured slots
 		featured = Banner.objects.filter(is_active=True).order_by('-created_at')[:10]
 		categories = ProductCategory.objects.all().order_by('-created_at')
@@ -44,6 +65,7 @@ class MobileHomepageAPIView(APIView):
 			"categories": ProductCategorySerializer(categories, many=True).data,
 			"featured": BannerSerializer(featured, many=True).data,
 			"products": ProductSerializer(products_top, many=True, context={"request": request}).data,
+			"video_ad_url": video_ad_url,
 		}
 		return Response(data, status=status.HTTP_200_OK)
 

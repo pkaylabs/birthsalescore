@@ -63,6 +63,19 @@ class BannerAdmin(admin.ModelAdmin):
     list_display = ('title', 'link', 'is_active', 'created_at')
     search_fields = ('title', 'link')
 
+
+@admin.register(VideoAd)
+class VideoAdAdmin(admin.ModelAdmin):
+    list_display = ('id', 'title', 'is_active', 'created_at')
+    search_fields = ('title',)
+    list_filter = ('is_active',)
+
+
+@admin.register(UserVideoAdState)
+class UserVideoAdStateAdmin(admin.ModelAdmin):
+    list_display = ('user', 'last_shown_at', 'updated_at')
+    search_fields = ('user__email', 'user__phone', 'user__name')
+
 @admin.register(ContactMessage)
 class ContactMessageAdmin(admin.ModelAdmin):
     list_display = ('name', 'email', 'phone', 'status', 'created_at')

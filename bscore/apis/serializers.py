@@ -276,6 +276,18 @@ class BannerSerializer(serializers.ModelSerializer):
         model = Banner
         fields = '__all__'
 
+
+class VideoAdSerializer(serializers.ModelSerializer):
+    def to_representation(self, instance):
+        rep = super().to_representation(instance)
+        request = self.context.get('request')
+        rep['video'] = _to_absolute_url(request=request, url=rep.get('video'))
+        return rep
+
+    class Meta:
+        model = VideoAd
+        fields = '__all__'
+
 class AdImageSerializer(serializers.ModelSerializer):
     class Meta:
         model = AdImage
