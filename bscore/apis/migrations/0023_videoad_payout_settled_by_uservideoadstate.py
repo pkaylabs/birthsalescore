@@ -5,6 +5,33 @@ from django.conf import settings
 from django.db import migrations, models
 
 
+def add_settled_by_if_missing(apps, schema_editor):
+    """Add Payout.settled_by column only if it doesn't already exist.
+
+    Some environments may already have the column (e.g., applied from a different
+    migration set or manual schema change). SQLite will error on duplicate column
+    names, so we guard it here.
+    """
+
+    Payout = apps.get_model('apis', 'Payout')
+    table_name = Payout._meta.db_table
+    column_name = 'settled_by_id'
+
+    with schema_editor.connection.cursor() as cursor:
+        existing_columns = {
+            col.name
+            for col in schema_editor.connection.introspection.get_table_description(
+                cursor, table_name
+            )
+        }
+
+    if column_name in existing_columns:
+        return
+
+    field = Payout._meta.get_field('settled_by')
+    schema_editor.add_field(Payout, field)
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -24,10 +51,17 @@ class Migration(migrations.Migration):
                 ('updated_at', models.DateTimeField(auto_now=True)),
             ],
         ),
-        migrations.AddField(
-            model_name='payout',
-            name='settled_by',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='settled_payouts', to=settings.AUTH_USER_MODEL),
+        migrations.SeparateDatabaseAndState(
+            database_operations=[
+                migrations.RunPython(add_settled_by_if_missing, migrations.RunPython.noop),
+            ],
+            state_operations=[
+                migrations.AddField(
+                    model_name='payout',
+                    name='settled_by',
+                    field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='settled_payouts', to=settings.AUTH_USER_MODEL),
+                ),
+            ],
         ),
         migrations.CreateModel(
             name='UserVideoAdState',
