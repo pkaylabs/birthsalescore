@@ -1,7 +1,9 @@
-from django.db.models import Q
+from django.db.models import Avg, Count, Q
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+
+from drf_spectacular.utils import extend_schema, OpenApiExample, OpenApiResponse
 
 from accounts.models import Vendor
 from apis.models import (Order, Product, ProductCategory, Service,
@@ -236,7 +238,19 @@ class ProductRatingsAPIView(APIView):
             user=request.user,
             defaults={"rating": rating_value, "comment": comment},
         )
-        return Response(ProductRatingSerializer(rating_obj, context={"request": request}).data, status=status.HTTP_200_OK)
+
+        agg = ProductRating.objects.filter(product=product).aggregate(
+            avg=Avg('rating'),
+            cnt=Count('id'),
+        )
+        avg = agg.get('avg')
+        average_rating = round(float(avg), 2) if avg is not None else None
+        ratings_count = int(agg.get('cnt') or 0)
+
+        rating_data = ProductRatingSerializer(rating_obj, context={"request": request}).data
+        rating_data["average_rating"] = average_rating
+        rating_data["ratings_count"] = ratings_count
+        return Response(rating_data, status=status.HTTP_200_OK)
 
     def put(self, request, *args, **kwargs):
         return self.post(request, *args, **kwargs)
@@ -462,6 +476,30 @@ class PlaceOrderAPIView(APIView):
 
     permission_classes = (permissions.IsAuthenticated,)
 
+    @extend_schema(
+        summary='Place an order (location required)',
+        description='`location` is a single unified field: pass a Location id (e.g. "1") or a Location name (e.g. "Hall A").',
+        request=PlaceOrderSerializer,
+        responses={
+            201: OpenApiResponse(description='Order placed successfully'),
+            400: OpenApiResponse(description='Validation error'),
+            401: OpenApiResponse(description='Authentication required'),
+        },
+        examples=[
+            OpenApiExample(
+                'Place Order',
+                value={
+                    "items": [
+                        {"product": 1, "quantity": 1, "color": "Black", "size": "M"},
+                        {"product": 2, "quantity": 2}
+                    ],
+                    "location": "1",
+                    "customer_phone": "+233501234567"
+                },
+                request_only=True,
+            ),
+        ],
+    )
     def post(self, request, *args, **kwargs):
         user = request.user
       

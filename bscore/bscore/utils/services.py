@@ -106,9 +106,11 @@ def can_cashout(request, amount: float = 0.0):
 def get_payment_amount(request, cashout: bool = False, subscription = None, order = None, booking = None):
     '''get the amount to be paid'''
     if order:
-        print("Before order = order.total_price()")
-        amount = order.total_price
-        print("After order = order.total_price()")
+        print("Before order = order.total_amount")
+        amount = getattr(order, 'total_amount', None)
+        if amount is None:
+            amount = order.total_price
+        print("After order = order.total_amount")
     elif booking:
         print("Before booking = booking.service.price")
         amount = booking.service.price

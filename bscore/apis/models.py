@@ -125,7 +125,8 @@ class Order(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='orders')
     # Order can contain items from multiple vendors.
     items = models.ManyToManyField(OrderItem, related_name='orders')
-    location = models.CharField(max_length=255, blank=True, null=True)
+    location = models.ForeignKey('Location', on_delete=models.SET_NULL, null=True, blank=True, related_name='orders')
+    delivery_fee_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     customer_phone = models.CharField(max_length=15, blank=True, null=True)
     status = models.CharField(max_length=50, choices=[('Pending', 'Pending'), ('Completed', 'Completed'), ('Cancelled', 'Cancelled')], default='Pending')
     created_at = models.DateTimeField(auto_now_add=True)
@@ -147,6 +148,17 @@ class Order(models.Model):
             # item.price already includes quantity from OrderItem.save()
             total += float(item.price) 
         return total
+
+    @property
+    def total_amount(self):
+        """Total amount payable for the order (items total + delivery fee)."""
+        items_total = 0
+        for item in self.items.all():
+            try:
+                items_total += item.price
+            except Exception:
+                items_total += 0
+        return items_total + (self.delivery_fee_amount or 0)
     
     @property
     def vendor_id(self) -> str:
@@ -212,6 +224,40 @@ class Service(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class Location(models.Model):
+    """Delivery location used to compute delivery fees."""
+
+    LOCATION_CATEGORY_CHOICES = [
+        ('DEPARTMENT', 'Department'),
+        ('HALL', 'Hall'),
+    ]
+
+    name = models.CharField(max_length=255)
+    category = models.CharField(max_length=20, choices=LOCATION_CATEGORY_CHOICES)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['name', 'category'], name='unique_location_name_category'),
+        ]
+
+    def __str__(self):
+        return f"{self.name} ({self.category})"
+
+
+class DeliveryFee(models.Model):
+    """Delivery fee for a given location."""
+
+    location = models.OneToOneField(Location, on_delete=models.CASCADE, related_name='delivery_fee')
+    price = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.location} - {self.price}"
 
 
 class Banner(models.Model):

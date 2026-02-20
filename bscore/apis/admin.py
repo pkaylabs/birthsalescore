@@ -40,6 +40,20 @@ class OrderAdmin(admin.ModelAdmin):
     list_display = ( 'id','user', 'total_price', 'status', 'payment_status', 'created_at')
     search_fields = ('user__name', 'status')
 
+
+@admin.register(Location)
+class LocationAdmin(admin.ModelAdmin):
+    list_display = ('id', 'name', 'category', 'created_at')
+    search_fields = ('name',)
+    list_filter = ('category',)
+
+
+@admin.register(DeliveryFee)
+class DeliveryFeeAdmin(admin.ModelAdmin):
+    list_display = ('location', 'price', 'created_at')
+    search_fields = ('location__name',)
+    list_filter = ('location__category',)
+
 @admin.register(Service)
 class ServiceAdmin(admin.ModelAdmin):
     list_display = ('name', 'vendor', 'price', 'created_at')

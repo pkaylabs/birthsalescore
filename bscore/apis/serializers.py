@@ -1,4 +1,5 @@
 import json
+from decimal import Decimal
 
 from django.conf import settings
 from django.contrib.auth import authenticate
@@ -42,17 +43,20 @@ class UserSerializer(serializers.ModelSerializer):
 
 
 class UserAvatarSerializer(serializers.ModelSerializer):
-    avatar = serializers.SerializerMethodField()
+    avatar = serializers.ImageField(required=False, allow_null=True)
 
-    def get_avatar(self, obj):
+    def to_representation(self, instance):
+        rep = super().to_representation(instance)
         request = self.context.get('request')
-        if not getattr(obj, 'avatar', None):
-            return None
+        if not getattr(instance, 'avatar', None):
+            rep['avatar'] = None
+            return rep
         try:
-            url = obj.avatar.url
+            url = instance.avatar.url
         except Exception:
-            return None
-        return _to_absolute_url(request=request, url=url)
+            url = None
+        rep['avatar'] = _to_absolute_url(request=request, url=url)
+        return rep
 
     class Meta:
         model = User
@@ -297,6 +301,9 @@ class OrderSerializer(serializers.ModelSerializer):
     items = OrderItemSerializer(many=True, read_only=True)
     payment_status = serializers.ReadOnlyField()
     total_price = serializers.ReadOnlyField()
+    total_amount = serializers.ReadOnlyField()
+    location_name = serializers.ReadOnlyField(source='location.name')
+    location_category = serializers.ReadOnlyField(source='location.category')
     vendor_id = serializers.ReadOnlyField()
     customer_name = serializers.ReadOnlyField()
     vendor_name = serializers.ReadOnlyField()
@@ -308,6 +315,8 @@ class OrderSerializer(serializers.ModelSerializer):
 class PlaceOrderSerializer(serializers.ModelSerializer):
     '''Serializer for placing an order'''
     items = OrderItemSerializer(many=True)
+    # Accept flexible input (Location id or name), then resolve to Location FK.
+    location = serializers.CharField()
     
     class Meta:
         model = Order
@@ -315,6 +324,10 @@ class PlaceOrderSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
+        location_input = attrs.get('location')
+        if not location_input:
+            raise serializers.ValidationError({"location": "location is required"})
+
         items = attrs.get('items') or []
 
         errors = []
@@ -353,11 +366,37 @@ class PlaceOrderSerializer(serializers.ModelSerializer):
 
         if errors:
             raise serializers.ValidationError({"items": errors})
+
+        # Resolve delivery location and fee.
+        location_obj = None
+        if isinstance(location_input, int) or (isinstance(location_input, str) and location_input.isdigit()):
+            location_obj = Location.objects.filter(id=int(location_input)).first()
+        else:
+            location_obj = Location.objects.filter(name__iexact=str(location_input).strip()).first()
+
+        if not location_obj:
+            raise serializers.ValidationError({"location": "Invalid location"})
+
+        fee = DeliveryFee.objects.filter(location=location_obj).first()
+        delivery_fee_amount = fee.price if fee else Decimal('0.00')
+
+        # Store resolved objects for create().
+        self.context['_location_obj'] = location_obj
+        self.context['_delivery_fee_amount'] = delivery_fee_amount
+
+        # Store FK instance on the model field.
+        attrs['location'] = location_obj
         return attrs
     
     def create(self, validated_data):
         items_data = validated_data.pop('items')
-        order = Order.objects.create(**validated_data)
+        delivery_fee_amount = self.context.get('_delivery_fee_amount')
+        if delivery_fee_amount in (None, ""):
+            delivery_fee_amount = Decimal('0.00')
+        order = Order.objects.create(
+            **validated_data,
+            delivery_fee_amount=delivery_fee_amount,
+        )
         order_items = []
         for item_data in items_data:
             product = item_data['product']
@@ -427,6 +466,50 @@ class BannerSerializer(serializers.ModelSerializer):
     class Meta:
         model = Banner
         fields = '__all__'
+
+
+class LocationSerializer(serializers.ModelSerializer):
+    delivery_fee_price = serializers.SerializerMethodField()
+
+    def get_delivery_fee_price(self, obj):
+        fee = getattr(obj, 'delivery_fee', None)
+        price = getattr(fee, 'price', None)
+        if price is None:
+            return 0.0
+        try:
+            return float(price)
+        except Exception:
+            return 0.0
+
+    class Meta:
+        model = Location
+        fields = (
+            'id',
+            'name',
+            'category',
+            'delivery_fee_price',
+            'created_at',
+            'updated_at',
+        )
+        read_only_fields = ('created_at', 'updated_at', 'delivery_fee_price')
+
+
+class DeliveryFeeSerializer(serializers.ModelSerializer):
+    location_name = serializers.ReadOnlyField(source='location.name')
+    location_category = serializers.ReadOnlyField(source='location.category')
+
+    class Meta:
+        model = DeliveryFee
+        fields = (
+            'id',
+            'location',
+            'location_name',
+            'location_category',
+            'price',
+            'created_at',
+            'updated_at',
+        )
+        read_only_fields = ('created_at', 'updated_at', 'location_name', 'location_category')
 
 
 class VideoAdSerializer(serializers.ModelSerializer):

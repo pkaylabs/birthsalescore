@@ -18,6 +18,7 @@ from .auth import (
 	MobileUserAvatarUpdateAPI,
 )
 from knox.views import LogoutView, LogoutAllView
+from .locations import MobileLocationsAPIView
 
 app_name = 'mobileapi'
 
@@ -29,6 +30,7 @@ router.register(r'banners', BannerViewSet, basename='mobile-banners')
 
 urlpatterns = [
 	path('homepage/', MobileHomepageAPIView.as_view(), name='homepage'),
+	path('locations/', MobileLocationsAPIView.as_view(), name='locations'),
 	# Auth endpoints
 	path('login/', MobileLoginAPI.as_view(), name='login'),
 	path('register/', MobileRegisterAPI.as_view(), name='register'),

@@ -46,4 +46,6 @@ urlpatterns += [
     path('payouts/approve-all/', views.ApproveAllPendingPayoutsAPIView.as_view(), name='payouts_approve_all'),
     path('banners/', views.BannerAPIView.as_view(), name='banners'),
     path('videoads/', views.VideoAdAPIView.as_view(), name='video_ads'),
+    path('locations/', views.LocationsAPIView.as_view(), name='locations'),
+    path('deliveryfees/', views.DeliveryFeesAPIView.as_view(), name='delivery_fees'),
 ]
