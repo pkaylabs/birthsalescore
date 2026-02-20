@@ -37,6 +37,102 @@ class ProductAPIView(APIView):
         serializer = ProductSerializer(products, many=True, context={"request": request})
         return Response(serializer.data, status=status.HTTP_200_OK)
 
+    @extend_schema(
+        summary='Create a product (vendor/admin)',
+        description=(
+            'Supports extra features via `available_colors` and `available_sizes`. '
+            'If you are uploading `image`, use `multipart/form-data`. '
+            'In multipart, you can pass `available_colors`/`available_sizes` as JSON string (e.g. `["Red","Blue"]`) '
+            'or as comma-separated string (e.g. `Red,Blue`).'
+        ),
+        request={
+            'multipart/form-data': {
+                'type': 'object',
+                'properties': {
+                    'name': {'type': 'string'},
+                    'description': {'type': 'string'},
+                    'price': {'type': 'string'},
+                    'category': {'type': 'integer'},
+                    'in_stock': {'type': 'boolean'},
+                    'is_published': {'type': 'boolean'},
+                    'image': {'type': 'string', 'format': 'binary'},
+                    'available_colors': {'type': 'string', 'description': 'JSON list string or comma-separated string'},
+                    'available_sizes': {'type': 'string', 'description': 'JSON list string or comma-separated string'},
+                    'vendor': {'type': 'integer', 'description': 'Admin-only: vendor DB id'},
+                },
+                'required': ['name', 'price', 'category'],
+            },
+            'application/json': {
+                'type': 'object',
+                'properties': {
+                    'name': {'type': 'string'},
+                    'description': {'type': 'string'},
+                    'price': {'type': 'string'},
+                    'category': {'type': 'integer'},
+                    'in_stock': {'type': 'boolean'},
+                    'is_published': {'type': 'boolean'},
+                    'available_colors': {'type': 'array', 'items': {'type': 'string'}},
+                    'available_sizes': {'type': 'array', 'items': {'type': 'string'}},
+                    'vendor': {'type': 'integer', 'description': 'Admin-only: vendor DB id'},
+                },
+                'required': ['name', 'price', 'category'],
+            },
+        },
+        responses={
+            201: OpenApiResponse(description='Created'),
+            400: OpenApiResponse(description='Validation error'),
+            401: OpenApiResponse(description='Authentication required'),
+        },
+        examples=[
+            OpenApiExample(
+                'Create Product (JSON arrays)',
+                value={
+                    'name': 'Baby Diapers',
+                    'description': 'Size 1 diapers',
+                    'price': '25.00',
+                    'category': 2,
+                    'in_stock': True,
+                    'is_published': True,
+                    'available_colors': ['White', 'Blue'],
+                    'available_sizes': ['S', 'M'],
+                },
+                request_only=True,
+            ),
+            OpenApiExample(
+                'Create Product (multipart strings)',
+                value={
+                    'name': 'Maternity Dress',
+                    'price': '120.00',
+                    'category': 3,
+                    'available_colors': '["Black","Wine"]',
+                    'available_sizes': 'S,M,L',
+                    'image': '(binary)',
+                },
+                request_only=True,
+            ),
+            OpenApiExample(
+                'Create Product Response',
+                value={
+                    'message': 'Product created successfully',
+                    'product': {
+                        'id': 1,
+                        'name': 'Baby Diapers',
+                        'description': 'Size 1 diapers',
+                        'price': '25.00',
+                        'category': 2,
+                        'in_stock': True,
+                        'is_published': True,
+                        'available_colors': ['White', 'Blue'],
+                        'available_sizes': ['S', 'M'],
+                        'image': 'http://localhost:8000/media/products/diapers.png',
+                        'created_at': '2026-02-20T12:00:00Z',
+                        'updated_at': '2026-02-20T12:00:00Z',
+                    },
+                },
+                response_only=True,
+            ),
+        ],
+    )
     def post(self, request, *args, **kwargs):
         '''Create a new product''' 
         user = request.user
@@ -58,6 +154,84 @@ class ProductAPIView(APIView):
             return Response({"message": "Product created successfully", "product": serializer.data}, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+    @extend_schema(
+        summary='Update a product (vendor/admin)',
+        description='Send `product_id` in the body. Supports updating `available_colors` and `available_sizes` (arrays or strings).',
+        request={
+            'multipart/form-data': {
+                'type': 'object',
+                'properties': {
+                    'product_id': {'type': 'integer'},
+                    'name': {'type': 'string'},
+                    'description': {'type': 'string'},
+                    'price': {'type': 'string'},
+                    'category': {'type': 'integer'},
+                    'in_stock': {'type': 'boolean'},
+                    'is_published': {'type': 'boolean'},
+                    'image': {'type': 'string', 'format': 'binary'},
+                    'available_colors': {'type': 'string'},
+                    'available_sizes': {'type': 'string'},
+                },
+                'required': ['product_id'],
+            },
+            'application/json': {
+                'type': 'object',
+                'properties': {
+                    'product_id': {'type': 'integer'},
+                    'name': {'type': 'string'},
+                    'description': {'type': 'string'},
+                    'price': {'type': 'string'},
+                    'category': {'type': 'integer'},
+                    'in_stock': {'type': 'boolean'},
+                    'is_published': {'type': 'boolean'},
+                    'available_colors': {'type': 'array', 'items': {'type': 'string'}},
+                    'available_sizes': {'type': 'array', 'items': {'type': 'string'}},
+                },
+                'required': ['product_id'],
+            },
+        },
+        responses={
+            200: OpenApiResponse(description='Updated'),
+            400: OpenApiResponse(description='Validation error'),
+            401: OpenApiResponse(description='Authentication required'),
+            404: OpenApiResponse(description='Product not found'),
+        },
+        examples=[
+            OpenApiExample(
+                'Update Product Features',
+                value={
+                    'product_id': 1,
+                    'available_colors': ['Black', 'White'],
+                    'available_sizes': ['L', 'XL'],
+                },
+                request_only=True,
+            ),
+            OpenApiExample(
+                'Update Product (multipart strings)',
+                value={
+                    'product_id': 1,
+                    'available_colors': 'Black, White',
+                    'available_sizes': '["L","XL"]',
+                    'image': '(binary)',
+                },
+                request_only=True,
+            ),
+            OpenApiExample(
+                'Update Product Response',
+                value={
+                    'message': 'Product updated successfully',
+                    'product': {
+                        'id': 1,
+                        'name': 'Baby Diapers',
+                        'available_colors': ['Black', 'White'],
+                        'available_sizes': ['L', 'XL'],
+                        'updated_at': '2026-02-20T12:30:00Z',
+                    },
+                },
+                response_only=True,
+            ),
+        ],
+    )
     def put(self, request, *args, **kwargs):
         '''Update a product (Only vendor who owns it can update)'''
         user = request.user
@@ -80,6 +254,32 @@ class ProductAPIView(APIView):
             return Response({"message": "Product updated successfully", "product": serializer.data}, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+    @extend_schema(
+        summary='Delete a product (vendor/admin)',
+        request={
+            'application/json': {
+                'type': 'object',
+                'properties': {
+                    'product_id': {'type': 'integer'},
+                },
+                'required': ['product_id'],
+            }
+        },
+        responses={
+            200: OpenApiResponse(description='Deleted'),
+            400: OpenApiResponse(description='Validation error'),
+            401: OpenApiResponse(description='Authentication required'),
+            404: OpenApiResponse(description='Product not found'),
+        },
+        examples=[
+            OpenApiExample('Delete Product', value={'product_id': 1}, request_only=True),
+            OpenApiExample(
+                'Delete Product Response',
+                value={'message': 'Product deleted successfully'},
+                response_only=True,
+            ),
+        ],
+    )
     def delete(self, request, *args, **kwargs):
         '''Delete a product (Only vendor who owns it can delete)'''
         user = request.user
