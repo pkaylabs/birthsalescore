@@ -4,6 +4,8 @@ from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from drf_spectacular.utils import OpenApiExample, OpenApiResponse, extend_schema
+
 from accounts.models import Vendor
 from apis.models import Payout
 from apis.serializers import PayoutSerializer
@@ -19,6 +21,32 @@ class PayoutsAPIView(APIView):
 
     permission_classes = (permissions.IsAuthenticated,)
 
+    @extend_schema(
+        summary='List payouts (admin sees all; vendor sees own)',
+        description=(
+            'Admin/staff/superuser: sees all payouts; optional filters via query params.\n'
+            'Vendor: sees only their payouts.'
+        ),
+        responses={
+            200: PayoutSerializer(many=True),
+            401: OpenApiResponse(description='Authentication required'),
+            403: OpenApiResponse(description='Not allowed'),
+        },
+        examples=[
+            OpenApiExample(
+                'Filter By Vendor',
+                value={"vendor_id": "VND-123"},
+                request_only=True,
+                description='Use as query params: ?vendor_id=VND-123',
+            ),
+            OpenApiExample(
+                'Filter By Status',
+                value={"payout_status": "PENDING", "payment_status": "PAID"},
+                request_only=True,
+                description='Use as query params: ?payout_status=PENDING&payment_status=PAID',
+            ),
+        ],
+    )
     def get(self, request, *args, **kwargs):
         user = request.user
         qs = Payout.objects.select_related('order', 'vendor', 'payment').prefetch_related('items', 'items__product').order_by('-created_at')
@@ -54,6 +82,54 @@ class ApprovePayoutAPIView(APIView):
 
     permission_classes = (permissions.IsAuthenticated,)
 
+    @extend_schema(
+        summary='Approve or reject a payout (admin-only)',
+        request={
+            'application/json': {
+                'type': 'object',
+                'properties': {
+                    'payout_id': {'type': 'integer'},
+                    'action': {'type': 'string', 'enum': ['approve', 'reject']},
+                },
+                'required': ['payout_id'],
+            }
+        },
+        responses={
+            200: OpenApiResponse(description='Approved/Rejected'),
+            400: OpenApiResponse(description='Validation error'),
+            401: OpenApiResponse(description='Authentication required'),
+            403: OpenApiResponse(description='Not allowed'),
+            404: OpenApiResponse(description='Payout not found'),
+        },
+        examples=[
+            OpenApiExample(
+                'Approve Payout',
+                value={"payout_id": 10, "action": "approve"},
+                request_only=True,
+            ),
+            OpenApiExample(
+                'Reject Payout',
+                value={"payout_id": 10, "action": "reject"},
+                request_only=True,
+            ),
+            OpenApiExample(
+                'Approve Response',
+                value={
+                    "status": "success",
+                    "message": "Payout approved and vendor credited",
+                    "payout": {
+                        "id": 10,
+                        "vendor_id": "VND-123",
+                        "vendor_name": "Sample Vendor",
+                        "amount": "120.00",
+                        "payout_status": "APPROVED",
+                        "is_settled": True,
+                    },
+                },
+                response_only=True,
+            ),
+        ],
+    )
     def post(self, request, *args, **kwargs):
         user = request.user
         if not (user.is_superuser or user.is_staff or user.user_type == UserType.ADMIN.value):
@@ -105,7 +181,7 @@ class ApprovePayoutAPIView(APIView):
 class ApproveAllPendingPayoutsAPIView(APIView):
     """Admin endpoint to bulk-approve all pending payouts.
 
-    Optional filter:
+    Required filter:
     - vendor_id: filter payouts by vendor.vendor_id (query param or request body)
 
     Notes:
@@ -115,20 +191,68 @@ class ApproveAllPendingPayoutsAPIView(APIView):
 
     permission_classes = (permissions.IsAuthenticated,)
 
+    @extend_schema(
+        summary='Bulk-approve all pending payouts (admin-only)',
+        description='Approves payouts where payout_status==PENDING and is_settled==False. vendor_id is required.',
+        request={
+            'application/json': {
+                'type': 'object',
+                'properties': {
+                    'vendor_id': {'type': 'string'},
+                },
+                'required': ['vendor_id'],
+            }
+        },
+        responses={
+            200: OpenApiResponse(description='Bulk approval result'),
+            400: OpenApiResponse(description='Validation error'),
+            401: OpenApiResponse(description='Authentication required'),
+            403: OpenApiResponse(description='Not allowed'),
+        },
+        examples=[
+            OpenApiExample(
+                'Bulk Approve (One Vendor)',
+                value={"vendor_id": "VND-123"},
+                request_only=True,
+                description='Can also be provided as query param: ?vendor_id=VND-123',
+            ),
+            OpenApiExample(
+                'Bulk Approve Response',
+                value={
+                    "status": "success",
+                    "message": "Pending payouts approved and vendors credited",
+                    "approved_count": 2,
+                    "approved_payout_ids": [10, 11],
+                },
+                response_only=True,
+            ),
+            OpenApiExample(
+                'No Pending Payouts',
+                value={
+                    "status": "success",
+                    "message": "No pending payouts to approve",
+                    "approved_count": 0,
+                    "approved_payout_ids": [],
+                },
+                response_only=True,
+            ),
+        ],
+    )
     def post(self, request, *args, **kwargs):
         user = request.user
         if not (user.is_superuser or user.is_staff or user.user_type == UserType.ADMIN.value):
             return Response({"message": "Not allowed"}, status=status.HTTP_403_FORBIDDEN)
 
         vendor_id = request.query_params.get('vendor_id') or request.data.get('vendor_id')
+        if not vendor_id:
+            return Response({"message": "vendor_id is required"}, status=status.HTTP_400_BAD_REQUEST)
 
         qs = Payout.objects.select_related('vendor').filter(
             is_settled=False,
             payout_status='PENDING',
         )
 
-        if vendor_id:
-            qs = qs.filter(vendor__vendor_id=vendor_id)
+        qs = qs.filter(vendor__vendor_id=vendor_id)
 
         with transaction.atomic():
             payouts = list(qs.select_for_update())

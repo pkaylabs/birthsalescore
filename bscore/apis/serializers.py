@@ -261,21 +261,27 @@ class ProductSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class ProductImagesSerializer(serializers.ModelSerializer):
-    image = serializers.SerializerMethodField()
+    image = serializers.ImageField(required=False, allow_null=True)
 
-    def get_image(self, obj):
+    def to_representation(self, instance):
+        rep = super().to_representation(instance)
         request = self.context.get('request')
-        if not getattr(obj, 'image', None):
-            return None
+        if not getattr(instance, 'image', None):
+            rep['image'] = None
+            return rep
         try:
-            url = obj.image.url
+            url = instance.image.url
         except Exception:
-            return None
-        return _to_absolute_url(request=request, url=url)
+            url = None
+        rep['image'] = _to_absolute_url(request=request, url=url)
+        return rep
 
     class Meta:
         model = ProductImages
         fields = '__all__'
+        extra_kwargs = {
+            'product': {'required': False},
+        }
 
 class ProductReviewSerializer(serializers.ModelSerializer):
     class Meta:
