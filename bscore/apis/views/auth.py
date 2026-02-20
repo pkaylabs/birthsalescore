@@ -66,8 +66,10 @@ class LoginAPI(APIView):
        
         login(request, user)
 
+        # now I am allowing multiple logins. 
+        # Uncomment the following lines to delete existing tokens and allow only one active session per user.
         # Delete existing token
-        AuthToken.objects.filter(user=user).delete()
+        # AuthToken.objects.filter(user=user).delete()
         return Response({
             "user": UserSerializer(user, context={'request': request}).data,
             "token": AuthToken.objects.create(user)[1],
