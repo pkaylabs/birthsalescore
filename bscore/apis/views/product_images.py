@@ -73,18 +73,26 @@ class ProductExtraImagesAPIView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     @extend_schema(
-        summary='Add an extra product image (vendor/admin)',
+        summary='Add extra product images (vendor/admin)',
         request={
             'multipart/form-data': {
                 'type': 'object',
                 'properties': {
-                    'image': {'type': 'string', 'format': 'binary'},
+                    'image': {
+                        'type': 'string',
+                        'format': 'binary',
+                        'description': 'Single file (backwards compatible). You can also repeat this field multiple times.',
+                    },
+                    'images': {
+                        'type': 'array',
+                        'items': {'type': 'string', 'format': 'binary'},
+                        'description': 'Upload multiple files in one request (max 7 total extra images per product)',
+                    },
                 },
-                'required': ['image'],
             }
         },
         responses={
-            201: ProductImagesSerializer,
+            201: ProductImagesSerializer(many=True),
             400: OpenApiResponse(description='Validation error'),
             401: OpenApiResponse(description='Authentication required'),
             403: OpenApiResponse(description='Not allowed'),
@@ -92,9 +100,34 @@ class ProductExtraImagesAPIView(APIView):
         },
         examples=[
             OpenApiExample(
-                'Upload Extra Image',
+                'Upload Extra Images',
+                value={"images": ["(binary)", "(binary)"]},
+                request_only=True,
+            ),
+            OpenApiExample(
+                'Upload Single Extra Image',
                 value={"image": "(binary)"},
                 request_only=True,
+            ),
+            OpenApiExample(
+                'Upload Response (list)',
+                value=[
+                    {
+                        "id": 101,
+                        "product": 1,
+                        "image": "http://localhost:8000/media/product_images/img1.jpg",
+                        "created_at": "2026-02-20T12:00:00Z",
+                        "updated_at": "2026-02-20T12:00:00Z",
+                    },
+                    {
+                        "id": 102,
+                        "product": 1,
+                        "image": "http://localhost:8000/media/product_images/img2.jpg",
+                        "created_at": "2026-02-20T12:00:00Z",
+                        "updated_at": "2026-02-20T12:00:00Z",
+                    },
+                ],
+                response_only=True,
             ),
         ],
     )
@@ -106,12 +139,38 @@ class ProductExtraImagesAPIView(APIView):
         if not self._can_manage(request, product):
             return Response({"message": "Not allowed"}, status=status.HTTP_403_FORBIDDEN)
 
-        serializer = ProductImagesSerializer(data=request.data, context={"request": request})
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        # Accept either a single file field `image` or multiple via `images` (or repeated `image`).
+        files = request.FILES.getlist('images')
+        if not files:
+            files = request.FILES.getlist('image')
 
-        obj = serializer.save(product=product)
-        return Response(ProductImagesSerializer(obj, context={"request": request}).data, status=status.HTTP_201_CREATED)
+        if not files:
+            return Response({"message": "image or images is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if len(files) > 7:
+            return Response({"message": "Maximum 7 images allowed"}, status=status.HTTP_400_BAD_REQUEST)
+
+        existing_count = ProductImages.objects.filter(product_id=product_id).count()
+        if existing_count + len(files) > 7:
+            return Response(
+                {
+                    "message": "Maximum 7 images allowed per product",
+                    "existing_count": existing_count,
+                    "attempted_upload": len(files),
+                    "max_allowed": 7,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        created = []
+        for f in files:
+            obj = ProductImages.objects.create(product=product, image=f)
+            created.append(obj)
+
+        return Response(
+            ProductImagesSerializer(created, many=True, context={"request": request}).data,
+            status=status.HTTP_201_CREATED,
+        )
 
     @extend_schema(
         summary='Delete an extra product image (vendor/admin)',
@@ -136,6 +195,13 @@ class ProductExtraImagesAPIView(APIView):
         image = ProductImages.objects.filter(id=image_id, product_id=product_id).first()
         if not image:
             return Response({"message": "Image not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        # Ensure the underlying file is removed from storage as well.
+        try:
+            if getattr(image, 'image', None):
+                image.image.delete(save=False)
+        except Exception:
+            pass
 
         image.delete()
         return Response({"message": "Image deleted successfully"}, status=status.HTTP_200_OK)
