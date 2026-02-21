@@ -409,6 +409,7 @@ class Payment(models.Model):
     status = models.CharField(max_length=10, default=PaymentStatus.PENDING.value)
     status_code = models.CharField(max_length=10, blank=True, null=True)
     vendor_credited_debited = models.BooleanField(default=False) # True if vendor has been credited or debited
+    subscription_effects_applied = models.BooleanField(default=False)  # True once subscription dates have been updated for this payment
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -444,6 +445,36 @@ class Payment(models.Model):
         else:
             msg = f"Payment for User {self.user.name}"
         return  f'{self.payment_id} - ' + msg
+
+
+class PaystackWebhookEvent(models.Model):
+    """Stores Paystack webhook events for auditing and later reconciliation.
+
+    Primary use-case: Paystack may send an event before we have the local Payment row
+    (or when a request fails mid-flight). We ACK the webhook with HTTP 200 to avoid
+    retries, but record the payload so it can be replayed later.
+    """
+
+    event = models.CharField(max_length=100, blank=True, null=True)
+    reference = models.CharField(max_length=255, db_index=True)
+    signature = models.CharField(max_length=255, blank=True, null=True)
+    payload = models.JSONField(default=dict, blank=True)
+
+    processed = models.BooleanField(default=False)
+    attempts = models.PositiveIntegerField(default=0)
+    last_error = models.TextField(blank=True, null=True)
+    processed_at = models.DateTimeField(blank=True, null=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['reference', 'processed']),
+        ]
+
+    def __str__(self):
+        return f"PaystackWebhookEvent({self.event}) {self.reference} processed={self.processed}"
     
 
 class ContactMessage(models.Model):

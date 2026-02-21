@@ -3,7 +3,8 @@ import hmac
 import json
 
 from django.conf import settings
-from django.db.models import Q
+from django.utils import timezone
+from django.db.models import F, Q
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -12,13 +13,14 @@ from drf_spectacular.utils import OpenApiExample, OpenApiResponse, extend_schema
 
 import datetime
 from accounts.models import Subscription, Vendor
-from apis.models import Order, Payment, ServiceBooking
+from apis.models import Order, Payment, PaystackWebhookEvent, ServiceBooking
 from apis.serializers import PaymentSerializer
-from bscore.utils.const import PaymentType, UserType
+from bscore.utils.const import PaymentStatus, PaymentStatusCode, PaymentType, UserType
 from bscore.utils.services import (
     can_cashout,
     execute_momo_transaction,
     get_transaction_status,
+    apply_payment_success_effects,
     initiate_paystack_payment,
     finalize_paystack_payment,
 )
@@ -319,6 +321,23 @@ class PaystackWebhookAPI(APIView):
         if event and event not in allowed_events:
             return Response({"status": "ignored", "event": event}, status=status.HTTP_200_OK)
 
+        # If we don't have a local Payment yet, record the webhook and ACK (avoid Paystack retry storms).
+        if not Payment.objects.filter(payment_id=reference).exists():
+            try:
+                PaystackWebhookEvent.objects.create(
+                    event=event,
+                    reference=str(reference),
+                    signature=str(signature),
+                    payload=payload,
+                    processed=False,
+                    attempts=0,
+                )
+            except Exception:
+                # If we can't persist the event, ask Paystack to retry.
+                return Response({"status": "error", "message": "Could not record webhook"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+            return Response({"status": "queued", "event": event, "reference": reference}, status=status.HTTP_200_OK)
+
         # Reconcile by verifying against Paystack API (safe + idempotent).
         result = finalize_paystack_payment(reference)
         api_status = int(result.get('api_status', status.HTTP_200_OK) or status.HTTP_200_OK)
@@ -328,6 +347,23 @@ class PaystackWebhookAPI(APIView):
         # - For real server-side failures, return 500 so Paystack retries later.
         if api_status >= 500:
             return Response({"status": "error", "event": event, "result": result}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        # Mark any previously queued events for this reference as processed once the payment is terminal.
+        # Terminal states: SUCCESS / FAILED.
+        terminal_statuses = {PaymentStatus.SUCCESS.value, PaymentStatus.FAILED.value}
+        if result.get('status') in terminal_statuses:
+            try:
+                last_error = None
+                if result.get('status') == PaymentStatus.FAILED.value:
+                    last_error = 'Terminal FAILED reconciliation'
+                PaystackWebhookEvent.objects.filter(reference=str(reference), processed=False).update(
+                    processed=True,
+                    processed_at=timezone.now(),
+                    attempts=F('attempts') + 1,
+                    last_error=last_error,
+                )
+            except Exception:
+                pass
 
         return Response({"status": "ok", "event": event, "result": result}, status=status.HTTP_200_OK)
     
@@ -347,11 +383,39 @@ class PaymentStatusCheckAPI(APIView):
             return Response({
                 "message": "Payment not found",
             }, status=status.HTTP_404_NOT_FOUND)
-        # check if payment is successful
         response = get_transaction_status(payment.payment_id)
-        payment.status_code = response.get('status_code')
-        payment.status = response.get('message')
+        provider_code = response.get('status_code')
+
+        already_success = (
+            payment.status == PaymentStatus.SUCCESS.value
+            and payment.status_code == PaymentStatusCode.SUCCESS.value
+        )
+
+        # Normalize provider codes into our PaymentStatus/PaymentStatusCode.
+        if provider_code == PaymentStatusCode.SUCCESS.value:
+            payment.status = PaymentStatus.SUCCESS.value
+            payment.status_code = PaymentStatusCode.SUCCESS.value
+        elif provider_code == PaymentStatusCode.FAILED.value:
+            # Never downgrade a successful payment.
+            if not already_success:
+                payment.status = PaymentStatus.FAILED.value
+                payment.status_code = PaymentStatusCode.FAILED.value
+        else:
+            # Treat unknown codes as pending.
+            if not already_success:
+                payment.status = PaymentStatus.PENDING.value
+                payment.status_code = PaymentStatusCode.PENDING.value
+
         payment.save()
+
+        # If the payment is now successful, apply post-success effects safely.
+        if payment.status == PaymentStatus.SUCCESS.value and payment.status_code == PaymentStatusCode.SUCCESS.value:
+            try:
+                payment = apply_payment_success_effects(payment)
+            except Exception:
+                # Don't fail the status check response; consider logging in future.
+                pass
+
         serializer = PaymentSerializer(payment)
         return Response(serializer.data, status=status.HTTP_200_OK)
 

@@ -4,6 +4,7 @@ import random
 import string
 import time
 import uuid
+from datetime import timedelta
 
 import requests
 from django.db import transaction
@@ -280,6 +281,14 @@ def execute_momo_transaction(request, type, user=None, order=None, booking=None,
                     transaction.save()
         else:
             print("CAN'T DETECT TRANSACTION TYPE")
+
+            # Apply any other post-success effects idempotently (e.g., subscription dates).
+            try:
+                apply_payment_success_effects(transaction)
+            except Exception:
+                # Don't block the payment response; consider logging in future.
+                pass
+
         return {
             "transaction_status": "success",
             "message": "Transaction is successful",
@@ -347,6 +356,78 @@ def create_payouts_for_order_payment(payment: Payment):
             )
         payouts.append(payout)
     return payouts
+
+
+def _apply_payment_success_effects_locked(payment: Payment) -> Payment:
+    """Apply side-effects for a successful payment.
+
+    Assumes `payment` row is locked (select_for_update) when called from within a transaction.
+    Effects are guarded to be safe on repeats.
+    """
+
+    # Order payments: create per-vendor payouts (idempotent via get_or_create + unique constraints).
+    if payment.order_id is not None:
+        create_payouts_for_order_payment(payment)
+
+    # Non-order wallet movements: credit vendor for DEBIT, debit vendor for CREDIT (cashout).
+    if payment.order_id is None and payment.vendor_id is not None and not payment.vendor_credited_debited:
+        vendor = payment.vendor
+        wallet = vendor.get_wallet() if vendor else None
+        if wallet:
+            if payment.payment_type == PaymentType.DEBIT.value:
+                wallet.credit_wallet(payment.amount)
+                payment.vendor_credited_debited = True
+            elif payment.payment_type == PaymentType.CREDIT.value:
+                # Cashout: debit vendor wallet once.
+                if wallet.debit_wallet(payment.amount):
+                    payment.vendor_credited_debited = True
+
+    # Subscription payments: set subscription start/end once per payment.
+    if payment.subscription_id is not None and not payment.subscription_effects_applied:
+        subscription = payment.subscription
+        if subscription:
+            # Use local date; avoids timezone surprises.
+            try:
+                from django.utils import timezone
+                start_date = timezone.localdate()
+            except Exception:
+                import datetime
+                start_date = datetime.date.today()
+            subscription.start_date = start_date
+            subscription.end_date = start_date + timedelta(days=30)
+            subscription.save()
+            payment.subscription_effects_applied = True
+
+    payment.save()
+    return payment
+
+
+def apply_payment_success_effects(payment: Payment) -> Payment:
+    """Public helper to apply post-success effects exactly-once where needed.
+
+    Safe to call repeatedly (webhook/callback/status checks). It will:
+    - Create payouts for orders (idempotent)
+    - Credit/debit vendor wallet once (guarded by vendor_credited_debited)
+    - Activate/renew subscription once per payment (guarded by subscription_effects_applied)
+    """
+
+    if not payment:
+        return payment
+    if payment.status != PaymentStatus.SUCCESS.value or payment.status_code != PaymentStatusCode.SUCCESS.value:
+        return payment
+
+    with transaction.atomic():
+        locked = (
+            Payment.objects.select_for_update()
+            .select_related('vendor', 'subscription', 'order')
+            .filter(id=payment.id)
+            .first()
+        )
+        if not locked:
+            return payment
+        if locked.status != PaymentStatus.SUCCESS.value or locked.status_code != PaymentStatusCode.SUCCESS.value:
+            return locked
+        return _apply_payment_success_effects_locked(locked)
 
 
 # ----------------------
@@ -489,7 +570,7 @@ def finalize_paystack_payment(reference: str):
     with transaction.atomic():
         payment = (
             Payment.objects.select_for_update()
-            .select_related('vendor', 'order')
+            .select_related('vendor', 'order', 'subscription')
             .filter(payment_id=reference)
             .first()
         )
@@ -518,16 +599,15 @@ def finalize_paystack_payment(reference: str):
             payment.status = PaymentStatus.SUCCESS.value
             payment.status_code = PaymentStatusCode.SUCCESS.value
 
-            if payment.order is not None:
-                create_payouts_for_order_payment(payment)
-            else:
-                # Credit vendor wallet for single-vendor flows exactly once.
-                if not payment.vendor_credited_debited:
-                    vendor = payment.vendor
-                    wallet = vendor.get_wallet() if vendor else None
-                    if wallet:
-                        wallet.credit_wallet(payment.amount)
-                        payment.vendor_credited_debited = True
+            # Apply post-success effects idempotently under the same lock.
+            payment.save()
+            _apply_payment_success_effects_locked(payment)
+            serializer = PaymentSerializer(payment)
+            return {
+                "status": payment.status,
+                "transaction": serializer.data,
+                "api_status": status.HTTP_200_OK,
+            }
 
         elif status_text == "failed":
             payment.status = PaymentStatus.FAILED.value
