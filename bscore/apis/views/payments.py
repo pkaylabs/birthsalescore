@@ -203,11 +203,6 @@ class SubscriptionRenewalAPIView(APIView):
         print(f"subscription: {subscription}")
         print(f"Vendor: {vendor}")
         if subscription:
-            # ensure only active subscriptions can be renewed
-            if subscription.expired == False:
-                return Response({
-                    "message": "You cannot renew active subscription"
-                }, status=status.HTTP_400_BAD_REQUEST)
             # get the default birthnon vendor profile
             vendor = Vendor.objects.filter(
                 Q(vendor_name__icontains='Birthnon Account') | 
@@ -237,15 +232,9 @@ class SubscriptionRenewalAPIView(APIView):
             return Response({
                 "message": str(e),
             }, status=status.HTTP_400_BAD_REQUEST)
-        # check if payment is successful and update subscription
-        print('response:', response)
-        if response.get('transaction').get('status_code') == '000':
-            # set the start and end date of the subscription
-            print('response:', response)
-            subscription.start_date = datetime.date.today()
-            # add 30 days to the start date
-            subscription.end_date = datetime.date.today() + datetime.timedelta(days=30)
-            subscription.save()
+
+        # Subscription dates are updated via centralized idempotent post-payment effects
+        # (triggered within execute_momo_transaction / status checks). Do not mutate here.
         return Response(
             {
                 "status": response.get('transaction_status'),

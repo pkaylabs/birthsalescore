@@ -393,8 +393,15 @@ def _apply_payment_success_effects_locked(payment: Payment) -> Payment:
             except Exception:
                 import datetime
                 start_date = datetime.date.today()
-            subscription.start_date = start_date
-            subscription.end_date = start_date + timedelta(days=30)
+
+            # If subscription is still active, extend from current end_date.
+            # If expired (or missing end_date), restart from today.
+            current_end = subscription.end_date
+            if current_end and current_end >= start_date:
+                subscription.end_date = current_end + timedelta(days=30)
+            else:
+                subscription.start_date = start_date
+                subscription.end_date = start_date + timedelta(days=30)
             subscription.save()
             payment.subscription_effects_applied = True
 
