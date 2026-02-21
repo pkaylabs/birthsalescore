@@ -6,11 +6,12 @@ import time
 import uuid
 
 import requests
+from django.db import transaction
 from rest_framework import status
 from rest_framework.response import Response
 
 from accounts.models import Vendor, Wallet
-from apis.models import Payment, Payout, PayoutItem
+from apis.models import OrderItem, Payment, Payout, PayoutItem
 from apis.serializers import PaymentSerializer
 from bscore import settings
 from bscore.utils.const import PaymentMethod, PaymentType, PaymentStatus, PaymentStatusCode
@@ -453,8 +454,17 @@ def initiate_paystack_payment(request, user=None, order=None, booking=None, subs
     }
 
 def finalize_paystack_payment(reference: str):
-    """Verify Paystack payment and update Payment record and vendor wallet if successful."""
+    """Verify Paystack payment and update Payment record.
+
+    Idempotent behavior:
+    - Never credits a vendor wallet more than once for the same payment.
+    - For order payments, payouts are created via get_or_create (safe on repeats).
+    - Once a payment is SUCCESS, do not downgrade it to FAILED/PENDING.
+    """
+
     verify = paystack_verify(reference)
+
+    # Quick check: ensure we have a local payment record.
     payment = Payment.objects.filter(payment_id=reference).first()
     if not payment:
         return {
@@ -463,27 +473,62 @@ def finalize_paystack_payment(reference: str):
             "api_status": status.HTTP_404_NOT_FOUND,
         }
 
-    # Default values
-    payment.status_code = None
-    payment.status = PaymentStatus.FAILED.value
+    # If Paystack verification failed (bad reference or Paystack error), don't mutate local state.
+    if not verify.get("status") or not verify.get("data"):
+        serializer = PaymentSerializer(payment)
+        return {
+            "status": "failed",
+            "message": verify.get("message") or "Paystack verification failed",
+            "transaction": serializer.data,
+            "api_status": status.HTTP_400_BAD_REQUEST,
+        }
 
-    if verify.get("status") and verify.get("data"):
-        data = verify["data"]
-        status_text = data.get("status")  # 'success', 'failed'
-        # Map to internal codes
+    data = verify["data"]
+    status_text = data.get("status")  # 'success', 'failed', 'abandoned', etc.
+
+    with transaction.atomic():
+        payment = (
+            Payment.objects.select_for_update()
+            .select_related('vendor', 'order')
+            .filter(payment_id=reference)
+            .first()
+        )
+        if not payment:
+            return {
+                "status": "failed",
+                "message": "Payment not found",
+                "api_status": status.HTTP_404_NOT_FOUND,
+            }
+
+        already_success = (
+            payment.status == PaymentStatus.SUCCESS.value
+            and payment.status_code == PaymentStatusCode.SUCCESS.value
+        )
+
+        # Never downgrade a successful payment.
+        if already_success and status_text != "success":
+            serializer = PaymentSerializer(payment)
+            return {
+                "status": payment.status,
+                "transaction": serializer.data,
+                "api_status": status.HTTP_200_OK,
+            }
+
         if status_text == "success":
             payment.status = PaymentStatus.SUCCESS.value
             payment.status_code = PaymentStatusCode.SUCCESS.value
-            # For order payments, create payouts instead of immediate vendor credit.
+
             if payment.order is not None:
                 create_payouts_for_order_payment(payment)
             else:
-                # Credit vendor wallet for single-vendor flows
-                vendor = payment.vendor
-                if vendor and vendor.get_wallet():
-                    wallet = vendor.get_wallet()
-                    wallet.credit_wallet(payment.amount)
-                    payment.vendor_credited_debited = True
+                # Credit vendor wallet for single-vendor flows exactly once.
+                if not payment.vendor_credited_debited:
+                    vendor = payment.vendor
+                    wallet = vendor.get_wallet() if vendor else None
+                    if wallet:
+                        wallet.credit_wallet(payment.amount)
+                        payment.vendor_credited_debited = True
+
         elif status_text == "failed":
             payment.status = PaymentStatus.FAILED.value
             payment.status_code = PaymentStatusCode.FAILED.value
@@ -491,7 +536,8 @@ def finalize_paystack_payment(reference: str):
             payment.status = PaymentStatus.PENDING.value
             payment.status_code = PaymentStatusCode.PENDING.value
 
-    payment.save()
+        payment.save()
+
     serializer = PaymentSerializer(payment)
     return {
         "status": payment.status,

@@ -1,14 +1,20 @@
+import hashlib
+import hmac
+import json
+
+from django.conf import settings
 from django.db.models import Q
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+
+from drf_spectacular.utils import OpenApiExample, OpenApiResponse, extend_schema
 
 import datetime
 from accounts.models import Subscription, Vendor
 from apis.models import Order, Payment, ServiceBooking
 from apis.serializers import PaymentSerializer
 from bscore.utils.const import PaymentType, UserType
-from bscore.utils.permissions import allow_domains
 from bscore.utils.services import (
     can_cashout,
     execute_momo_transaction,
@@ -252,7 +258,6 @@ class PaymentCallbackAPI(APIView):
     '''API Endpoint to handle payment callback'''
     permission_classes = [permissions.AllowAny]
 
-    @allow_domains(['localhost:8000'],)
     def get(self, request, *args, **kwargs):
         '''Handle payment callback from Paystack (redirect with reference).'''
         reference = request.query_params.get('reference') or request.query_params.get('payment_id')
@@ -260,6 +265,71 @@ class PaymentCallbackAPI(APIView):
             return Response({"message": "reference is required"}, status=status.HTTP_400_BAD_REQUEST)
         result = finalize_paystack_payment(reference)
         return Response(result, status=result.get('api_status', status.HTTP_200_OK))
+
+
+class PaystackWebhookAPI(APIView):
+    """Webhook receiver for Paystack transaction updates.
+
+    Paystack will POST events to this endpoint.
+    We verify the request signature using PAYSTACK_SECRET_KEY and then reconcile our local Payment.
+    """
+
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request, *args, **kwargs):
+        signature = request.headers.get('x-paystack-signature') or request.META.get('HTTP_X_PAYSTACK_SIGNATURE')
+        if not signature:
+            return Response({"message": "Missing x-paystack-signature"}, status=status.HTTP_400_BAD_REQUEST)
+
+        secret = getattr(settings, 'PAYSTACK_SECRET_KEY', None)
+        if not secret:
+            return Response({"message": "Paystack secret key not configured"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        raw_body = request.body or b''
+        computed = hmac.new(
+            key=str(secret).encode('utf-8'),
+            msg=raw_body,
+            digestmod=hashlib.sha512,
+        ).hexdigest()
+
+        if not hmac.compare_digest(computed, str(signature)):
+            return Response({"message": "Invalid signature"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            payload = json.loads(raw_body.decode('utf-8') if raw_body else '{}')
+        except Exception:
+            return Response({"message": "Invalid JSON"}, status=status.HTTP_400_BAD_REQUEST)
+
+        event = payload.get('event')
+        data = payload.get('data') or {}
+        reference = data.get('reference')
+
+        # For transaction events without reference we can't reconcile.
+        if not reference:
+            return Response({"status": "ignored", "message": "Missing reference"}, status=status.HTTP_200_OK)
+
+        # Only reconcile for known transaction-related events.
+        # This keeps the webhook fast and avoids doing work for unrelated events.
+        allowed_events = {
+            'charge.success',
+            'charge.failed',
+            'transaction.success',
+            'transaction.failed',
+        }
+        if event and event not in allowed_events:
+            return Response({"status": "ignored", "event": event}, status=status.HTTP_200_OK)
+
+        # Reconcile by verifying against Paystack API (safe + idempotent).
+        result = finalize_paystack_payment(reference)
+        api_status = int(result.get('api_status', status.HTTP_200_OK) or status.HTTP_200_OK)
+
+        # Paystack will retry on non-2xx responses.
+        # - For expected client-ish outcomes (e.g., unknown reference), return 200 to avoid endless retries.
+        # - For real server-side failures, return 500 so Paystack retries later.
+        if api_status >= 500:
+            return Response({"status": "error", "event": event, "result": result}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return Response({"status": "ok", "event": event, "result": result}, status=status.HTTP_200_OK)
     
 class PaymentStatusCheckAPI(APIView):
     '''API Endpoint to check payment status'''
@@ -290,6 +360,42 @@ class PaystackVerifyAPI(APIView):
     '''API Endpoint to verify Paystack payment reference and update records.'''
     permission_classes = [permissions.IsAuthenticated]
 
+    @extend_schema(
+        summary='Paystack status check (verify by reference)',
+        description=(
+            'Verifies a Paystack transaction by `reference` and updates the local Payment record. '
+            'Safe to call multiple times (idempotent): it will not create duplicate payouts or double-credit wallets.'
+        ),
+        responses={
+            200: OpenApiResponse(description='Verification result'),
+            400: OpenApiResponse(description='Invalid reference / verification failed'),
+            401: OpenApiResponse(description='Authentication required'),
+            404: OpenApiResponse(description='Payment not found'),
+        },
+        examples=[
+            OpenApiExample(
+                'Verify Request',
+                value={"reference": "psk_ref_123"},
+                request_only=True,
+                description='Send as query param: ?reference=psk_ref_123',
+            ),
+            OpenApiExample(
+                'Verify Success Response',
+                value={
+                    "status": "SUCCESS",
+                    "transaction": {
+                        "payment_id": "psk_ref_123",
+                        "payment_method": "PAYSTACK",
+                        "status": "SUCCESS",
+                        "status_code": "000",
+                        "amount": "50.00"
+                    },
+                    "api_status": 200,
+                },
+                response_only=True,
+            ),
+        ],
+    )
     def get(self, request, *args, **kwargs):
         reference = request.query_params.get('reference') or request.query_params.get('payment_id')
         if not reference:
