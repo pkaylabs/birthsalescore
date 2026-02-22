@@ -8,6 +8,7 @@ from drf_spectacular.utils import OpenApiExample, OpenApiResponse, extend_schema
 from accounts.models import Vendor
 from apis.models import Product, ProductImages
 from apis.serializers import ProductImagesSerializer
+from apis.utils.querysets import filter_products_for_public
 from bscore.utils.const import UserType
 from bscore.utils.permissions import IsAdminOnly
 
@@ -19,11 +20,17 @@ class ProductExtraImagesAPIView(APIView):
     - POST /products/{product_id}/images/ -> add image (multipart)
     - DELETE /products/{product_id}/images/{image_id}/ -> delete image
 
-    Allowed: vendor who owns the product, or admin/staff.
+    Viewing (GET): public for products that are publicly viewable.
+    Managing (POST/DELETE): vendor who owns the product, or admin/staff.
     """
 
-    permission_classes = (permissions.IsAuthenticated,)
+    permission_classes = (permissions.AllowAny,)
     parser_classes = (MultiPartParser, FormParser)
+
+    def get_permissions(self):
+        if self.request.method == 'GET':
+            return [permissions.AllowAny()]
+        return [permissions.IsAuthenticated()]
 
     def _get_product(self, *, product_id: int):
         return Product.objects.filter(id=product_id).select_related('vendor').first()
@@ -52,11 +59,9 @@ class ProductExtraImagesAPIView(APIView):
         return product.vendor_id == vendor.id
 
     @extend_schema(
-        summary='List extra images for a product (vendor/admin)',
+        summary='List extra images for a product (public)',
         responses={
             200: ProductImagesSerializer(many=True),
-            401: OpenApiResponse(description='Authentication required'),
-            403: OpenApiResponse(description='Not allowed'),
             404: OpenApiResponse(description='Product not found'),
         },
     )
@@ -65,8 +70,13 @@ class ProductExtraImagesAPIView(APIView):
         if not product:
             return Response({"message": "Product not found"}, status=status.HTTP_404_NOT_FOUND)
 
+        # Allow vendor/admin to view even if unpublished.
         if not self._can_manage(request, product):
-            return Response({"message": "Not allowed"}, status=status.HTTP_403_FORBIDDEN)
+            # Public viewing: only allow if product would be visible publicly.
+            public_product = filter_products_for_public(Product.objects.filter(id=product_id, is_published=True)).first()
+            if not public_product:
+                # Hide existence for non-public products/vendors.
+                return Response({"message": "Product not found"}, status=status.HTTP_404_NOT_FOUND)
 
         images = ProductImages.objects.filter(product_id=product_id).order_by('-created_at')
         serializer = ProductImagesSerializer(images, many=True, context={"request": request})

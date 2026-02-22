@@ -66,7 +66,7 @@ class HomepageAPIView(APIView):
         """
         banners = Banner.objects.filter(is_active=True).order_by('?')[:10]
         categories = ProductCategory.objects.all().order_by('-created_at')
-        products = Product.objects.filter(is_published=True).order_by('?')[:10]
+        products = Product.objects.filter(is_published=True).order_by('?')[:30]
         best_selling_products = Product.objects.filter(is_published=True).order_by('?')[:10]
         new_arrivals = Product.objects.filter(is_published=True).order_by('-created_at')[:3]
         video_ad_url = _maybe_get_video_ad_url(request)
