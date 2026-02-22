@@ -7,6 +7,7 @@ from rest_framework.views import APIView
 from apis.models import Banner, Product, ProductCategory, UserVideoAdState, VideoAd
 from apis.serializers import (BannerSerializer, ProductCategorySerializer,
                               ProductSerializer)
+from apis.utils.querysets import filter_products_for_public
 
 
 def _maybe_get_video_ad_url(request):
@@ -66,9 +67,12 @@ class HomepageAPIView(APIView):
         """
         banners = Banner.objects.filter(is_active=True).order_by('?')[:10]
         categories = ProductCategory.objects.all().order_by('-created_at')
-        products = Product.objects.filter(is_published=True).order_by('?')[:30]
-        best_selling_products = Product.objects.filter(is_published=True).order_by('?')[:10]
-        new_arrivals = Product.objects.filter(is_published=True).order_by('-created_at')[:3]
+
+        # Published products only; exclude vendor products with expired subscriptions.
+        public_products_qs = filter_products_for_public(Product.objects.filter(is_published=True))
+        products = public_products_qs.order_by('?')[:30]
+        best_selling_products = public_products_qs.order_by('?')[:10]
+        new_arrivals = public_products_qs.order_by('-created_at')[:3]
         video_ad_url = _maybe_get_video_ad_url(request)
         response_data = {
             "banners": BannerSerializer(banners, many=True).data,

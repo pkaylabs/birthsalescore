@@ -28,7 +28,20 @@ def add_settled_by_if_missing(apps, schema_editor):
     if column_name in existing_columns:
         return
 
-    field = Payout._meta.get_field('settled_by')
+    # NOTE: The historical Payout model at this point (dependency 0022) may not
+    # yet include the `settled_by` field in its state, so we define the field
+    # explicitly for the database operation.
+    user_app_label, user_model_name = settings.AUTH_USER_MODEL.split('.')
+    UserModel = apps.get_model(user_app_label, user_model_name)
+
+    field = models.ForeignKey(
+        to=UserModel,
+        on_delete=django.db.models.deletion.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='settled_payouts',
+    )
+    field.set_attributes_from_name('settled_by')
     schema_editor.add_field(Payout, field)
 
 

@@ -446,7 +446,13 @@ class ProductRatingsAPIView(APIView):
 
 class ProductCategoryAPIView(APIView):
     '''API Endpoints for Product Categories'''
-    permission_classes = (permissions.IsAuthenticated,)
+
+    def get_permissions(self):
+        # Public read-only access
+        if self.request.method == 'GET':
+            return [permissions.AllowAny()]
+        # Writes require authentication; view logic below further restricts to admins.
+        return [permissions.IsAuthenticated()]
 
     def get(self, request, *args, **kwargs):
         categories = ProductCategory.objects.all()
