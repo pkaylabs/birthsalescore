@@ -537,6 +537,43 @@ class AdImageSerializer(serializers.ModelSerializer):
 class PaymentSerializer(serializers.ModelSerializer):
     customer_name = serializers.ReadOnlyField()
     what_was_paid_for = serializers.ReadOnlyField()
+
+    vendor_name = serializers.SerializerMethodField()
+
+    def get_vendor_name(self, obj):
+        # Preferred: direct vendor on payment (subscription/booking/single-vendor flows).
+        vendor = getattr(obj, 'vendor', None)
+        if vendor and getattr(vendor, 'vendor_name', None):
+            return vendor.vendor_name
+
+        # For multi-vendor order payments, payment.vendor may be null.
+        order = getattr(obj, 'order', None)
+        if order:
+            names = set()
+            try:
+                items = order.items.select_related('product', 'product__vendor').all()
+            except Exception:
+                items = order.items.all()
+            for item in items:
+                product = getattr(item, 'product', None)
+                if not product:
+                    continue
+                product_vendor = getattr(product, 'vendor', None)
+                if product_vendor and getattr(product_vendor, 'vendor_name', None):
+                    names.add(product_vendor.vendor_name)
+                else:
+                    # Platform-owned products (vendor is null)
+                    fallback = getattr(product, 'vendor_name', None)
+                    if fallback:
+                        names.add(str(fallback))
+            if len(names) == 1:
+                return next(iter(names))
+            if len(names) > 1:
+                return 'Multiple Vendors'
+
+        # Fallback
+        return None
+
     class Meta:
         model = Payment
         fields = '__all__'
