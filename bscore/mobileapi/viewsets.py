@@ -14,6 +14,7 @@ from apis.models import (
 	Service,
 	VideoAd,
 )
+from apis.utils.querysets import filter_products_for_public
 from apis.serializers import (
 	BannerSerializer,
 	ProductCategorySerializer,
@@ -53,13 +54,7 @@ class MobileHomepageAPIView(APIView):
 		categories = ProductCategory.objects.all().order_by('-created_at')
 
 		# Published products only; ensure vendor is allowed
-		products_qs = Product.objects.filter(is_published=True)
-		allowed_ids = [
-			p.id
-			for p in products_qs
-			if p.vendor and p.vendor.has_active_subscription() and p.vendor.can_create_or_view_product()
-		]
-		products_top = Product.objects.filter(id__in=allowed_ids).order_by('-created_at')[:50]
+		products_top = filter_products_for_public(Product.objects.filter(is_published=True)).order_by('-created_at')[:50]
 
 		data = {
 			"categories": ProductCategorySerializer(categories, many=True).data,
@@ -77,14 +72,7 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
 	permission_classes = [permissions.AllowAny]
 
 	def get_queryset(self):
-		qs = Product.objects.filter(is_published=True)
-		# Enforce vendor eligibility
-		allowed_ids = [
-			p.id
-			for p in qs
-			if p.vendor and p.vendor.has_active_subscription() and p.vendor.can_create_or_view_product()
-		]
-		qs = Product.objects.filter(id__in=allowed_ids)
+		qs = filter_products_for_public(Product.objects.filter(is_published=True))
 
 		# Optional filtering
 		category_id = self.request.query_params.get('category_id')

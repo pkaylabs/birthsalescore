@@ -8,6 +8,7 @@ from drf_spectacular.utils import extend_schema, OpenApiExample, OpenApiResponse
 from accounts.models import Vendor
 from apis.models import (Order, Product, ProductCategory, Service,
                     ServiceBooking, ProductRating)
+from apis.utils.querysets import filter_products_for_public
 from apis.serializers import (OrderSerializer, PlaceOrderSerializer,
                               ProductCategorySerializer, ProductSerializer,
                         ServiceBookingSerializer, ServiceSerializer,
@@ -32,7 +33,8 @@ class ProductAPIView(APIView):
             else:
                 return Response({"message": "Vendor profile not found or subscription expired"}, status=status.HTTP_400_BAD_REQUEST)
         else:
-            products = Product.objects.filter(is_active=True).order_by('-created_at')
+            # For customers/other users, exclude products from vendors with expired subscriptions.
+            products = filter_products_for_public(Product.objects.all()).order_by('-created_at')
 
         serializer = ProductSerializer(products, many=True, context={"request": request})
         return Response(serializer.data, status=status.HTTP_200_OK)
@@ -308,27 +310,13 @@ class CustomerProductsAPIView(APIView):
     def get(self, request, *args, **kwargs):
         '''Get all products for customers'''
         query = request.query_params.get('query', None)
+        products_qs = filter_products_for_public(Product.objects.filter(is_published=True))
+
         if query and query.isdigit():
-            # filter products based on query | exclude vendors with no active subscription
-            products = Product.objects.filter(is_published=True)
-            product_ids = [
-                product.id for product in products if product.vendor.has_active_subscription() and product.vendor.can_create_or_view_product()
-            ]
-            print("Query: ", query)
-            print("Product IDs: ", product_ids)
-            products = Product.objects.filter(id__in=product_ids).filter(id=query).first()
-            print("Products: ", products)
+            products = products_qs.filter(id=int(query)).first()
             many = False
         else:
-            # get all products
-            products = Product.objects.filter(is_published=True)
-
-            product_ids = [
-                product.id for product in products if product.vendor.has_active_subscription() and product.vendor.can_create_or_view_product()
-            ]
-            print("Product IDs: ", product_ids)
-            products = Product.objects.filter(id__in=product_ids).order_by('-created_at')
-            print("Products: ", products)
+            products = products_qs.order_by('-created_at')
             many = True
         if query and not products:
             return Response({"message": "No products found"}, status=status.HTTP_404_NOT_FOUND)
@@ -381,15 +369,13 @@ class ProductSearchAPIView(APIView):
     def get(self, request, *args, **kwargs):
         '''Get all products for customers'''
         query = request.query_params.get('query', None)
+        products = filter_products_for_public(Product.objects.filter(is_published=True))
         if query:
-            # filter products based on query
-            products = Product.objects.filter(
-                Q(name__icontains=query) | Q(description__icontains=query) | Q(category__name__icontains=query),
-                is_published=True
-            ).order_by('-created_at')
-        else:
-            # get all products
-            products = Product.objects.filter(is_published=True).order_by('-created_at')
+            products = products.filter(
+                Q(name__icontains=query) | Q(description__icontains=query) | Q(category__name__icontains=query)
+            )
+
+        products = products.order_by('-created_at')
         serializer = ProductSerializer(products, many=True, context={"request": request})
         return Response(serializer.data, status=status.HTTP_200_OK)
 
