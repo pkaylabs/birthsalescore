@@ -6,6 +6,8 @@ from .payments import *
 from .payouts import *
 from .products import *
 from .product_images import *
+from .service_images import *
 from .banner import *
 from .video_ads import *
 from .delivery import *
+from .service_fees import *

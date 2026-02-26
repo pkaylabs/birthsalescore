@@ -54,10 +54,23 @@ class DeliveryFeeAdmin(admin.ModelAdmin):
     search_fields = ('location__name',)
     list_filter = ('location__category',)
 
+
+@admin.register(ServiceFee)
+class ServiceFeeAdmin(admin.ModelAdmin):
+    list_display = ('id', 'fee_type', 'value', 'is_active', 'created_at')
+    list_filter = ('fee_type', 'is_active')
+    search_fields = ('fee_type',)
+
 @admin.register(Service)
 class ServiceAdmin(admin.ModelAdmin):
     list_display = ('name', 'vendor', 'price', 'created_at')
     search_fields = ('name', 'vendor__vendor_name')
+
+
+@admin.register(ServiceImages)
+class ServiceImagesAdmin(admin.ModelAdmin):
+    list_display = ('service', 'created_at')
+    search_fields = ('service__name',)
 
 @admin.register(Ad)
 class AdAdmin(admin.ModelAdmin):

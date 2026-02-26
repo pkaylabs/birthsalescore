@@ -1,5 +1,6 @@
 import uuid
 
+from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
@@ -226,6 +227,18 @@ class Service(models.Model):
         return self.name
 
 
+class ServiceImages(models.Model):
+    """Model representing extra images for a service."""
+
+    service = models.ForeignKey(Service, on_delete=models.CASCADE, related_name='images')
+    image = models.ImageField(upload_to='service_images/')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Image for {self.service.name}"
+
+
 class Location(models.Model):
     """Delivery location used to compute delivery fees."""
 
@@ -258,6 +271,46 @@ class DeliveryFee(models.Model):
 
     def __str__(self):
         return f"{self.location} - {self.price}"
+
+
+class ServiceFee(models.Model):
+    """Systemwide service fee applied on transactions.
+
+    Admins can configure either a flat fee or a percentage.
+    Only one ServiceFee should be active at a time.
+    """
+
+    FEE_TYPE_CHOICES = [
+        ('FLAT', 'Flat'),
+        ('PERCENTAGE', 'Percentage'),
+    ]
+
+    fee_type = models.CharField(max_length=20, choices=FEE_TYPE_CHOICES, default='PERCENTAGE')
+    value = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=0.00,
+        validators=[MinValueValidator(0)],
+    )
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def clean(self):
+        super().clean()
+        if self.fee_type == 'PERCENTAGE' and self.value is not None:
+            if self.value > 100:
+                raise ValidationError({'value': 'Percentage fee cannot exceed 100'})
+
+    def save(self, *args, **kwargs):
+        # Enforce only one active fee systemwide.
+        super().save(*args, **kwargs)
+        if self.is_active:
+            ServiceFee.objects.exclude(id=self.id).filter(is_active=True).update(is_active=False)
+
+    def __str__(self):
+        unit = '%' if self.fee_type == 'PERCENTAGE' else ''
+        return f"{self.fee_type} {self.value}{unit} (active={self.is_active})"
 
 
 class Banner(models.Model):

@@ -358,7 +358,7 @@ class CustomerServicesAPIView(APIView):
             many = True
         if query and not services:
             return Response({"message": "No services found"}, status=status.HTTP_404_NOT_FOUND)
-        serializer = ServiceSerializer(services, many=many)
+        serializer = ServiceSerializer(services, many=many, context={"request": request})
         return Response(serializer.data, status=status.HTTP_200_OK)
     
 class ProductSearchAPIView(APIView):
@@ -540,7 +540,7 @@ class ServicesAPIView(APIView):
                 return Response({"message": "Vendor profile not found or subscription expired"}, status=status.HTTP_400_BAD_REQUEST)
         else:
             services = Service.objects.none()
-        serializer = ServiceSerializer(services, many=True)
+        serializer = ServiceSerializer(services, many=True, context={"request": request})
         return Response(serializer.data, status=status.HTTP_200_OK)
     
     def post(self, request, *args, **kwargs):
@@ -554,11 +554,11 @@ class ServicesAPIView(APIView):
         if not (vendor and vendor.has_active_subscription() and vendor.can_create_or_view_product()):
             return Response({"message": "Vendor profile not found or subscription expired"}, status=status.HTTP_400_BAD_REQUEST)
         
-        serializer = ServiceSerializer(data=request.data)
+        serializer = ServiceSerializer(data=request.data, context={"request": request})
 
         if serializer.is_valid():
             service = serializer.save(vendor=vendor)
-            return Response(ServiceSerializer(service).data, status=status.HTTP_200_OK)
+            return Response(ServiceSerializer(service, context={"request": request}).data, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
     def put(self, request, *args, **kwargs):
@@ -575,7 +575,7 @@ class ServicesAPIView(APIView):
                return Response({"error": "Service not found"}, status=status.HTTP_404_NOT_FOUND)
            service.published = True
            service.save()
-           serializer = ServiceSerializer(service)
+           serializer = ServiceSerializer(service, context={"request": request})
            return Response({"message": "Service Published Successfully", "service": serializer.data}, status=status.HTTP_200_OK)
         else:
             return Response({"message": "You are not allowed to access this page"}, status=status.HTTP_403_FORBIDDEN)

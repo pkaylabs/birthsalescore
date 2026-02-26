@@ -631,3 +631,369 @@ def finalize_paystack_payment(reference: str):
         "transaction": serializer.data,
         "api_status": status.HTTP_200_OK,
     }
+
+
+# ----------------------
+# Paystack transfers (payouts/cashouts)
+# ----------------------
+
+def paystack_create_transfer_recipient(
+    *,
+    recipient_type: str,
+    name: str,
+    account_number: str,
+    bank_code: str,
+    currency: str = "GHS",
+    metadata: dict | None = None,
+):
+    """Create a Paystack transfer recipient.
+
+    `recipient_type` examples include: 'mobile_money', 'nuban', 'ghipss', etc.
+    For mobile money, Paystack expects `account_number` and `bank_code` (provider code).
+    """
+
+    url = "https://api.paystack.co/transferrecipient"
+    payload: dict = {
+        "type": recipient_type,
+        "name": name,
+        "account_number": account_number,
+        "bank_code": bank_code,
+        "currency": currency,
+    }
+    if metadata:
+        payload["metadata"] = metadata
+    resp = requests.post(url, headers=_paystack_headers(), json=payload)
+    return resp.json()
+
+
+def paystack_initiate_transfer(
+    *,
+    amount_minor: int,
+    recipient_code: str,
+    reason: str | None = None,
+    reference: str | None = None,
+    currency: str = "GHS",
+):
+    """Initiate a transfer from your Paystack balance."""
+
+    url = "https://api.paystack.co/transfer"
+    payload: dict = {
+        "source": "balance",
+        "amount": amount_minor,
+        "recipient": recipient_code,
+        "currency": currency,
+    }
+    if reason:
+        payload["reason"] = reason
+    if reference:
+        payload["reference"] = reference
+    resp = requests.post(url, headers=_paystack_headers(), json=payload)
+    return resp.json()
+
+
+def paystack_finalize_transfer(*, transfer_code: str, otp: str):
+    """Finalize a transfer that requires OTP."""
+
+    url = "https://api.paystack.co/transfer/finalize_transfer"
+    payload = {
+        "transfer_code": transfer_code,
+        "otp": otp,
+    }
+    resp = requests.post(url, headers=_paystack_headers(), json=payload)
+    return resp.json()
+
+
+def paystack_verify_transfer(reference: str):
+    """Verify transfer status by reference."""
+
+    url = f"https://api.paystack.co/transfer/verify/{reference}"
+    resp = requests.get(url, headers=_paystack_headers())
+    return resp.json()
+
+
+def paystack_list_banks(*, params: dict | None = None):
+    """List Paystack banks and (optionally) mobile money providers.
+
+    Paystack uses the same endpoint for both. Typical params:
+    - currency=GHS
+    - type=mobile_money
+    - country=ghana
+    """
+
+    url = "https://api.paystack.co/bank"
+    resp = requests.get(url, headers=_paystack_headers(), params=params or None)
+    return resp.json()
+
+
+def _map_paystack_transfer_status(status_text: str | None):
+    """Map Paystack transfer status to our PaymentStatus/PaymentStatusCode."""
+
+    status_text = (status_text or "").lower().strip()
+    if status_text in {"success", "successful", "completed"}:
+        return PaymentStatus.SUCCESS.value, PaymentStatusCode.SUCCESS.value
+    if status_text in {"failed", "reversed", "reversal"}:
+        return PaymentStatus.FAILED.value, PaymentStatusCode.FAILED.value
+    # includes: pending, otp, queued, processing, etc.
+    return PaymentStatus.PENDING.value, PaymentStatusCode.PENDING.value
+
+
+def initiate_paystack_cashout(
+    *,
+    request,
+    vendor: Vendor,
+    recipient_type: str,
+    name: str,
+    account_number: str,
+    bank_code: str,
+    currency: str = "GHS",
+    reason: str | None = None,
+):
+    """Create recipient + initiate Paystack transfer for vendor cashout.
+
+    Creates a local Payment row (PAYSTACK/CREDIT) with `payment_id` set to the transfer `reference`.
+    Wallet debit is applied only if/when the transfer is marked SUCCESS.
+    """
+
+    if not settings.PAYSTACK_SECRET_KEY:
+        return {
+            "status": "failed",
+            "message": "Paystack secret key not configured",
+            "api_status": status.HTTP_500_INTERNAL_SERVER_ERROR,
+        }
+
+    amount_res = get_payment_amount(request=request, cashout=True)
+    if amount_res.get("api_status") != status.HTTP_200_OK:
+        return {
+            "status": "failed",
+            "message": amount_res.get("message"),
+            "api_status": amount_res.get("api_status"),
+        }
+
+    amount = amount_res["amount"]
+    reference = uuid.uuid4().hex
+
+    recipient_resp = paystack_create_transfer_recipient(
+        recipient_type=recipient_type,
+        name=name,
+        account_number=account_number,
+        bank_code=bank_code,
+        currency=currency,
+    )
+    if not recipient_resp.get("status") or not recipient_resp.get("data"):
+        return {
+            "status": "failed",
+            "message": recipient_resp.get("message") or "Failed to create Paystack transfer recipient",
+            "provider_response": recipient_resp,
+            "api_status": status.HTTP_400_BAD_REQUEST,
+        }
+
+    recipient_code = recipient_resp["data"].get("recipient_code")
+    if not recipient_code:
+        return {
+            "status": "failed",
+            "message": "Paystack recipient_code missing",
+            "provider_response": recipient_resp,
+            "api_status": status.HTTP_400_BAD_REQUEST,
+        }
+
+    payment_reason = (reason or "Vendor cashout").strip()
+    payment = Payment.objects.create(
+        payment_id=reference,
+        status=PaymentStatus.PENDING.value,
+        status_code=PaymentStatusCode.PENDING.value,
+        vendor=vendor,
+        user=request.user,
+        reason=payment_reason[:255],
+        payment_method=PaymentMethod.PAYSTACK.value,
+        payment_type=PaymentType.CREDIT.value,
+        amount=amount,
+        order=None,
+        booking=None,
+        subscription=None,
+    )
+
+    transfer_resp = paystack_initiate_transfer(
+        amount_minor=int(amount * 100),
+        recipient_code=recipient_code,
+        reason=payment_reason,
+        reference=reference,
+        currency=currency,
+    )
+    if not transfer_resp.get("status") or not transfer_resp.get("data"):
+        # Keep payment pending/failed locally but do NOT debit wallet.
+        payment.status = PaymentStatus.FAILED.value
+        payment.status_code = PaymentStatusCode.FAILED.value
+        payment.save()
+        return {
+            "status": "failed",
+            "message": transfer_resp.get("message") or "Failed to initiate Paystack transfer",
+            "transaction": PaymentSerializer(payment).data,
+            "provider_response": transfer_resp,
+            "api_status": status.HTTP_400_BAD_REQUEST,
+        }
+
+    transfer_data = transfer_resp["data"]
+    transfer_status = transfer_data.get("status")
+    mapped_status, mapped_code = _map_paystack_transfer_status(transfer_status)
+    payment.status = mapped_status
+    payment.status_code = mapped_code
+
+    transfer_code = transfer_data.get("transfer_code")
+    if transfer_code:
+        # Keep within 255 chars.
+        suffix = f" | transfer_code:{transfer_code}"
+        payment.reason = (payment.reason or "")[: max(0, 255 - len(suffix))] + suffix
+    payment.save()
+
+    # If transfer is already successful, apply wallet debit safely.
+    if payment.status == PaymentStatus.SUCCESS.value and payment.status_code == PaymentStatusCode.SUCCESS.value:
+        try:
+            payment = apply_payment_success_effects(payment)
+        except Exception:
+            pass
+
+    return {
+        "status": payment.status,
+        "reference": reference,
+        "recipient_code": recipient_code,
+        "transfer": transfer_data,
+        "transaction": PaymentSerializer(payment).data,
+        "api_status": status.HTTP_200_OK,
+    }
+
+
+def finalize_paystack_cashout(*, payment_reference: str, transfer_code: str, otp: str):
+    """Finalize a Paystack transfer OTP flow and reconcile local Payment."""
+
+    payment = Payment.objects.filter(payment_id=payment_reference).first()
+    if not payment:
+        return {
+            "status": "failed",
+            "message": "Payment not found",
+            "api_status": status.HTTP_404_NOT_FOUND,
+        }
+
+    if not settings.PAYSTACK_SECRET_KEY:
+        return {
+            "status": "failed",
+            "message": "Paystack secret key not configured",
+            "api_status": status.HTTP_500_INTERNAL_SERVER_ERROR,
+        }
+
+    finalize_resp = paystack_finalize_transfer(transfer_code=transfer_code, otp=otp)
+    if not finalize_resp.get("status"):
+        return {
+            "status": "failed",
+            "message": finalize_resp.get("message") or "Failed to finalize Paystack transfer",
+            "transaction": PaymentSerializer(payment).data,
+            "provider_response": finalize_resp,
+            "api_status": status.HTTP_400_BAD_REQUEST,
+        }
+
+    # Verify after finalize for authoritative status.
+    verify_resp = paystack_verify_transfer(payment_reference)
+    if not verify_resp.get("status") or not verify_resp.get("data"):
+        # Still return the finalize result, but don't mutate to success without verify.
+        return {
+            "status": payment.status,
+            "message": "Transfer finalized; verification pending",
+            "transaction": PaymentSerializer(payment).data,
+            "finalize_response": finalize_resp,
+            "verify_response": verify_resp,
+            "api_status": status.HTTP_200_OK,
+        }
+
+    transfer_status = (verify_resp.get("data") or {}).get("status")
+    mapped_status, mapped_code = _map_paystack_transfer_status(transfer_status)
+
+    with transaction.atomic():
+        locked = Payment.objects.select_for_update().filter(id=payment.id).first()
+        if not locked:
+            locked = payment
+
+        already_success = (
+            locked.status == PaymentStatus.SUCCESS.value
+            and locked.status_code == PaymentStatusCode.SUCCESS.value
+        )
+
+        # Never downgrade success.
+        if not already_success:
+            locked.status = mapped_status
+            locked.status_code = mapped_code
+            locked.save()
+
+        if (
+            locked.status == PaymentStatus.SUCCESS.value
+            and locked.status_code == PaymentStatusCode.SUCCESS.value
+        ):
+            try:
+                _apply_payment_success_effects_locked(locked)
+            except Exception:
+                pass
+
+        payment = locked
+
+    return {
+        "status": payment.status,
+        "transaction": PaymentSerializer(payment).data,
+        "finalize_response": finalize_resp,
+        "verify_response": verify_resp,
+        "api_status": status.HTTP_200_OK,
+    }
+
+
+def verify_paystack_cashout(*, payment_reference: str):
+    """Verify a Paystack transfer by reference and reconcile local Payment."""
+
+    payment = Payment.objects.filter(payment_id=payment_reference).first()
+    if not payment:
+        return {
+            "status": "failed",
+            "message": "Payment not found",
+            "api_status": status.HTTP_404_NOT_FOUND,
+        }
+
+    verify_resp = paystack_verify_transfer(payment_reference)
+    if not verify_resp.get("status") or not verify_resp.get("data"):
+        return {
+            "status": "failed",
+            "message": verify_resp.get("message") or "Paystack transfer verification failed",
+            "transaction": PaymentSerializer(payment).data,
+            "provider_response": verify_resp,
+            "api_status": status.HTTP_400_BAD_REQUEST,
+        }
+
+    transfer_status = (verify_resp.get("data") or {}).get("status")
+    mapped_status, mapped_code = _map_paystack_transfer_status(transfer_status)
+
+    with transaction.atomic():
+        locked = Payment.objects.select_for_update().filter(id=payment.id).first()
+        if not locked:
+            locked = payment
+
+        already_success = (
+            locked.status == PaymentStatus.SUCCESS.value
+            and locked.status_code == PaymentStatusCode.SUCCESS.value
+        )
+
+        if not already_success:
+            locked.status = mapped_status
+            locked.status_code = mapped_code
+            locked.save()
+
+        if (
+            locked.status == PaymentStatus.SUCCESS.value
+            and locked.status_code == PaymentStatusCode.SUCCESS.value
+        ):
+            try:
+                _apply_payment_success_effects_locked(locked)
+            except Exception:
+                pass
+        payment = locked
+
+    return {
+        "status": payment.status,
+        "transaction": PaymentSerializer(payment).data,
+        "verify_response": verify_resp,
+        "api_status": status.HTTP_200_OK,
+    }

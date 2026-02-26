@@ -1,5 +1,8 @@
 venv
 *.sqlite3
+# python
+__pycache__/
+*.py[cod]
 # static
 .env
 todos.txt

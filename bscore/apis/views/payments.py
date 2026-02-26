@@ -23,6 +23,10 @@ from bscore.utils.services import (
     apply_payment_success_effects,
     initiate_paystack_payment,
     finalize_paystack_payment,
+    initiate_paystack_cashout,
+    finalize_paystack_cashout,
+    verify_paystack_cashout,
+    paystack_list_banks,
 )
 
 
@@ -78,6 +82,160 @@ class VendorCashoutAPI(APIView):
             "message": "Withdrawal cannot be processed at this time",
             "status": "failed",
         }, status=status.HTTP_400_BAD_REQUEST)
+
+
+class PaystackCashoutInitiateAPI(APIView):
+    """Initiate a vendor cashout via Paystack Transfer.
+
+    This does NOT replace the existing PayHub-based `/cashout/` endpoint.
+    It creates a PAYSTACK/CREDIT Payment and debits the vendor wallet only after transfer success.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        user = request.user
+        if not (
+            user.is_superuser
+            or user.is_staff
+            or user.user_type == UserType.ADMIN.value
+            or user.user_type == UserType.VENDOR.value
+        ):
+            return Response({"message": "Not authorized"}, status=status.HTTP_403_FORBIDDEN)
+
+        amount = request.data.get('amount')
+        if not amount:
+            return Response({"message": "Amount is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Validate amount early to avoid Decimal conversion errors inside can_cashout.
+        try:
+            import decimal
+            decimal.Decimal(str(amount))
+        except Exception:
+            return Response({"message": "Invalid amount"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not can_cashout(request, amount):
+            return Response({
+                "message": "Withdrawal cannot be processed at this time",
+                "status": "failed",
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        vendor = Vendor.objects.filter(user=user).first()
+        if not vendor:
+            return Response({"message": "Vendor not found"}, status=status.HTTP_400_BAD_REQUEST)
+
+        recipient_type = request.data.get('recipient_type')
+        name = request.data.get('name')
+        account_number = request.data.get('account_number')
+        bank_code = request.data.get('bank_code')
+        currency = request.data.get('currency') or 'GHS'
+        reason = request.data.get('reason')
+
+        missing = [
+            key for key, val in {
+                'recipient_type': recipient_type,
+                'name': name,
+                'account_number': account_number,
+                'bank_code': bank_code,
+            }.items() if not val
+        ]
+        if missing:
+            return Response({
+                "message": f"Missing fields: {', '.join(missing)}",
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            result = initiate_paystack_cashout(
+                request=request,
+                vendor=vendor,
+                recipient_type=str(recipient_type),
+                name=str(name),
+                account_number=str(account_number),
+                bank_code=str(bank_code),
+                currency=str(currency),
+                reason=str(reason) if reason else None,
+            )
+        except Exception as e:
+            return Response({"message": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(result, status=result.get('api_status', status.HTTP_200_OK))
+
+
+class PaystackCashoutFinalizeAPI(APIView):
+    """Finalize a Paystack transfer that requires OTP."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        user = request.user
+        if not (
+            user.is_superuser
+            or user.is_staff
+            or user.user_type == UserType.ADMIN.value
+            or user.user_type == UserType.VENDOR.value
+        ):
+            return Response({"message": "Not authorized"}, status=status.HTTP_403_FORBIDDEN)
+
+        reference = request.data.get('reference') or request.data.get('payment_reference')
+        transfer_code = request.data.get('transfer_code')
+        otp = request.data.get('otp')
+
+        if not reference or not transfer_code or not otp:
+            return Response({
+                "message": "reference, transfer_code and otp are required",
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Ownership check: vendors can only finalize their own cashouts.
+        vendor = Vendor.objects.filter(user=user).first()
+        if user.user_type == UserType.VENDOR.value and vendor:
+            payment = Payment.objects.filter(payment_id=reference).first()
+            if payment and payment.vendor_id != vendor.id:
+                return Response({"message": "Not authorized"}, status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            result = finalize_paystack_cashout(
+                payment_reference=str(reference),
+                transfer_code=str(transfer_code),
+                otp=str(otp),
+            )
+        except Exception as e:
+            return Response({"message": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(result, status=result.get('api_status', status.HTTP_200_OK))
+
+
+class PaystackCashoutVerifyAPI(APIView):
+    """Verify a Paystack transfer by reference and update local Payment."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        user = request.user
+        if not (
+            user.is_superuser
+            or user.is_staff
+            or user.user_type == UserType.ADMIN.value
+            or user.user_type == UserType.VENDOR.value
+        ):
+            return Response({"message": "Not authorized"}, status=status.HTTP_403_FORBIDDEN)
+
+        reference = request.query_params.get('reference') or request.query_params.get('payment_reference')
+        if not reference:
+            return Response({"message": "reference is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Ownership check for vendors.
+        vendor = Vendor.objects.filter(user=user).first()
+        if user.user_type == UserType.VENDOR.value and vendor:
+            payment = Payment.objects.filter(payment_id=reference).first()
+            if payment and payment.vendor_id != vendor.id:
+                return Response({"message": "Not authorized"}, status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            result = verify_paystack_cashout(payment_reference=str(reference))
+        except Exception as e:
+            return Response({"message": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(result, status=result.get('api_status', status.HTTP_200_OK))
 
 
 class MakePaymentAPI(APIView):
@@ -455,3 +613,80 @@ class PaystackVerifyAPI(APIView):
             return Response({"message": "reference is required"}, status=status.HTTP_400_BAD_REQUEST)
         result = finalize_paystack_payment(reference)
         return Response(result, status=result.get('api_status', status.HTTP_200_OK))
+
+
+class PaystackBanksAPIView(APIView):
+    """Fetch Paystack bank and mobile money provider codes.
+
+    This proxies Paystack's `GET /bank`.
+    Pass-through query params (optional):
+    - currency (e.g., GHS)
+    - type (e.g., mobile_money)
+    - country (e.g., ghana)
+    - perPage, page
+    """
+
+    permission_classes = (permissions.AllowAny,)
+
+    @extend_schema(
+        summary='Paystack bank/provider codes (list banks/mobile money providers)',
+        description=(
+            'Returns Paystack bank list; for mobile money providers, pass `type=mobile_money`. '
+            'Example: `/paystack/banks/?currency=GHS&type=mobile_money&country=ghana`.'
+        ),
+        responses={
+            200: OpenApiResponse(description='Paystack bank/provider list'),
+            500: OpenApiResponse(description='Paystack secret key not configured'),
+        },
+        examples=[
+            OpenApiExample(
+                'Mobile Money Providers (GHS)',
+                value={
+                    'status': True,
+                    'message': 'Banks retrieved',
+                    'data': [
+                        {
+                            'name': 'MTN MoMo',
+                            'slug': 'mtn',
+                            'code': 'MTN',
+                            'longcode': '',
+                            'gateway': '',
+                            'pay_with_bank': False,
+                            'active': True,
+                            'currency': 'GHS',
+                            'type': 'mobile_money',
+                        }
+                    ]
+                },
+                response_only=True,
+            )
+        ],
+    )
+    def get(self, request, *args, **kwargs):
+        secret = getattr(settings, 'PAYSTACK_SECRET_KEY', None)
+        if not secret:
+            return Response(
+                {"message": "Paystack secret key not configured"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        allowed = {'currency', 'type', 'country', 'perPage', 'page'}
+        params = {
+            k: v for k, v in request.query_params.items()
+            if k in allowed and v not in (None, '')
+        }
+
+        try:
+            result = paystack_list_banks(params=params or None)
+        except Exception as e:
+            return Response(
+                {"message": str(e)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Paystack returns JSON with `status`, `message`, `data`.
+        # Surface provider errors as 400 to the client.
+        if not result.get('status'):
+            return Response(result, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(result, status=status.HTTP_200_OK)

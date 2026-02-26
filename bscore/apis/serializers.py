@@ -283,6 +283,30 @@ class ProductImagesSerializer(serializers.ModelSerializer):
             'product': {'required': False},
         }
 
+
+class ServiceImagesSerializer(serializers.ModelSerializer):
+    image = serializers.ImageField(required=False, allow_null=True)
+
+    def to_representation(self, instance):
+        rep = super().to_representation(instance)
+        request = self.context.get('request')
+        if not getattr(instance, 'image', None):
+            rep['image'] = None
+            return rep
+        try:
+            url = instance.image.url
+        except Exception:
+            url = None
+        rep['image'] = _to_absolute_url(request=request, url=url)
+        return rep
+
+    class Meta:
+        model = ServiceImages
+        fields = '__all__'
+        extra_kwargs = {
+            'service': {'required': False},
+        }
+
 class ProductReviewSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProductReview
@@ -454,10 +478,24 @@ class ServiceBookingSerializer(serializers.ModelSerializer):
 class ServiceSerializer(serializers.ModelSerializer):
     vendor = VendorSerializer(read_only=True)
     bookings = serializers.SerializerMethodField()
+    images = serializers.SerializerMethodField()
 
     def get_bookings(self, obj):
         bookings = ServiceBooking.objects.filter(service=obj).count()
         return bookings
+
+    def get_images(self, obj):
+        images_qs = getattr(obj, 'images', None)
+        if images_qs is None:
+            return []
+        serializer = ServiceImagesSerializer(images_qs.all(), many=True, context=self.context)
+        return serializer.data
+
+    def to_representation(self, instance):
+        rep = super().to_representation(instance)
+        request = self.context.get('request')
+        rep['image'] = _to_absolute_url(request=request, url=rep.get('image'))
+        return rep
     
     class Meta:
         model = Service
@@ -516,6 +554,41 @@ class DeliveryFeeSerializer(serializers.ModelSerializer):
             'updated_at',
         )
         read_only_fields = ('created_at', 'updated_at', 'location_name', 'location_category')
+
+
+class ServiceFeeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ServiceFee
+        fields = (
+            'id',
+            'fee_type',
+            'value',
+            'is_active',
+            'created_at',
+            'updated_at',
+        )
+        read_only_fields = ('created_at', 'updated_at')
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        fee_type = attrs.get('fee_type') or getattr(self.instance, 'fee_type', None)
+        value = attrs.get('value') if 'value' in attrs else getattr(self.instance, 'value', None)
+
+        if fee_type == 'PERCENTAGE' and value is not None:
+            try:
+                if value < 0 or value > 100:
+                    raise serializers.ValidationError({'value': 'Percentage fee must be between 0 and 100'})
+            except TypeError:
+                raise serializers.ValidationError({'value': 'Invalid value'})
+
+        if fee_type == 'FLAT' and value is not None:
+            try:
+                if value < 0:
+                    raise serializers.ValidationError({'value': 'Flat fee must be >= 0'})
+            except TypeError:
+                raise serializers.ValidationError({'value': 'Invalid value'})
+
+        return attrs
 
 
 class VideoAdSerializer(serializers.ModelSerializer):
