@@ -97,11 +97,14 @@ def can_cashout(request, amount: float = 0.0):
     user = request.user
     vendor = Vendor.objects.filter(user=user).first()
     if not vendor:
+        print("Vendor not found for user: ", user)
         return False
     wallet = Wallet.objects.filter(vendor=vendor).first()
     if not wallet:
+        print("Wallet not found for vendor: ", vendor)
         return False
     if (wallet.balance < decimal.Decimal(settings.MIN_CASHOUT_AMOUNT)) or (wallet.balance < decimal.Decimal(amount)):
+        print("Insufficient balance for cashout. Wallet balance: ", wallet.balance)
         return False
     return True
 

@@ -57,7 +57,7 @@ class MobileHomepageAPIView(APIView):
 
 		data = {
 			"categories": ProductCategorySerializer(categories, many=True).data,
-			"featured": BannerSerializer(featured, many=True).data,
+			"featured": BannerSerializer(featured, many=True, context={"request": request}).data,
 			"products": ProductSerializer(products_top, many=True, context={"request": request}).data,
 			"video_ad_url": video_ad_url,
 		}

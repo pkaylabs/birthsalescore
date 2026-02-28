@@ -20,8 +20,32 @@ class ServiceFeesAPIView(APIView):
     @extend_schema(
         summary='List service fees (admin-only)',
         responses={
-            200: OpenApiResponse(description='List of service fees'),
+            200: ServiceFeeSerializer(many=True),
         },
+        examples=[
+            OpenApiExample(
+                'List Service Fees (Response)',
+                value=[
+                    {
+                        'id': 2,
+                        'fee_type': 'PERCENTAGE',
+                        'value': '5.00',
+                        'is_active': True,
+                        'created_at': '2026-02-28T10:00:00Z',
+                        'updated_at': '2026-02-28T10:00:00Z',
+                    },
+                    {
+                        'id': 1,
+                        'fee_type': 'FLAT',
+                        'value': '2.50',
+                        'is_active': False,
+                        'created_at': '2026-02-01T10:00:00Z',
+                        'updated_at': '2026-02-01T10:00:00Z',
+                    },
+                ],
+                response_only=True,
+            ),
+        ],
     )
     def get(self, request, *args, **kwargs):
         fees = ServiceFee.objects.all().order_by('-is_active', '-created_at')

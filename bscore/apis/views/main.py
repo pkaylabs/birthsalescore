@@ -75,7 +75,7 @@ class HomepageAPIView(APIView):
         new_arrivals = public_products_qs.order_by('-created_at')[:3]
         video_ad_url = _maybe_get_video_ad_url(request)
         response_data = {
-            "banners": BannerSerializer(banners, many=True).data,
+            "banners": BannerSerializer(banners, many=True, context={"request": request}).data,
             "categories": ProductCategorySerializer(categories, many=True).data, 
             "products": ProductSerializer(products, many=True, context={"request": request}).data, 
             "best_selling_products": ProductSerializer(best_selling_products, many=True, context={"request": request}).data, 

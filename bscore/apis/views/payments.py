@@ -690,3 +690,131 @@ class PaystackBanksAPIView(APIView):
             return Response(result, status=status.HTTP_400_BAD_REQUEST)
 
         return Response(result, status=status.HTTP_200_OK)
+
+
+class PaystackTelcosAPIView(APIView):
+    """Return supported mobile money telcos/providers via Paystack.
+
+    Uses Paystack's `GET /bank` with `type=mobile_money`.
+    """
+
+    permission_classes = (permissions.AllowAny,)
+
+    @extend_schema(
+        summary='Supported telcos (mobile money providers)',
+        description=(
+            'Returns active Paystack mobile money providers (telcos). '
+            'Backed by Paystack `GET /bank` with `type=mobile_money`.'
+        ),
+        responses={
+            200: OpenApiResponse(description='Supported telcos list'),
+            500: OpenApiResponse(description='Paystack secret key not configured'),
+        },
+    )
+    def get(self, request, *args, **kwargs):
+        secret = getattr(settings, 'PAYSTACK_SECRET_KEY', None)
+        if not secret:
+            return Response(
+                {"message": "Paystack secret key not configured"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        currency = request.query_params.get('currency') or 'GHS'
+        country = request.query_params.get('country') or 'ghana'
+
+        params = {
+            'currency': currency,
+            'type': 'mobile_money',
+            'country': country,
+        }
+
+        try:
+            result = paystack_list_banks(params=params)
+        except Exception as e:
+            return Response({"message": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not result.get('status'):
+            return Response(result, status=status.HTTP_400_BAD_REQUEST)
+
+        data = result.get('data') or []
+        filtered = [
+            item for item in data
+            if item
+            and (item.get('active') is True)
+            and str(item.get('type') or '').lower() == 'mobile_money'
+        ]
+
+        return Response(
+            {
+                'status': True,
+                'message': 'Telcos retrieved',
+                'data': filtered,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class PaystackSupportedBanksAPIView(APIView):
+    """Return supported banks via Paystack.
+
+    Uses Paystack's `GET /bank` and filters out mobile money providers.
+    """
+
+    permission_classes = (permissions.AllowAny,)
+
+    @extend_schema(
+        summary='Supported banks',
+        description=(
+            'Returns active Paystack banks (excludes `type=mobile_money`). '
+            'Backed by Paystack `GET /bank`.'
+        ),
+        responses={
+            200: OpenApiResponse(description='Supported banks list'),
+            500: OpenApiResponse(description='Paystack secret key not configured'),
+        },
+    )
+    def get(self, request, *args, **kwargs):
+        secret = getattr(settings, 'PAYSTACK_SECRET_KEY', None)
+        if not secret:
+            return Response(
+                {"message": "Paystack secret key not configured"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        currency = request.query_params.get('currency') or 'GHS'
+        country = request.query_params.get('country') or 'ghana'
+
+        # We keep params minimal; Paystack will return banks for the region.
+        params = {
+            'currency': currency,
+            'country': country,
+        }
+
+        try:
+            result = paystack_list_banks(params=params)
+        except Exception as e:
+            return Response({"message": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not result.get('status'):
+            return Response(result, status=status.HTTP_400_BAD_REQUEST)
+
+        data = result.get('data') or []
+        filtered = []
+        for item in data:
+            if not item or item.get('active') is not True:
+                continue
+            if str(item.get('type') or '').lower() == 'mobile_money':
+                continue
+            # If pay_with_bank is present, require it. Otherwise keep item.
+            if 'pay_with_bank' in item and item.get('pay_with_bank') is not True:
+                continue
+            filtered.append(item)
+
+        return Response(
+            {
+                'status': True,
+                'message': 'Banks retrieved',
+                'data': filtered,
+            },
+            status=status.HTTP_200_OK,
+        )

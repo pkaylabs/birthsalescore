@@ -19,7 +19,7 @@ class BannerAPIView(APIView):
         if not user.is_superuser and not user.is_staff and user.user_type != UserType.ADMIN.value:
             return Response({"message": "You don't have permission to access this"}, status=status.HTTP_403_FORBIDDEN)
         banners = Banner.objects.all().order_by('-created_at')
-        serializer = BannerSerializer(banners, many=True)
+        serializer = BannerSerializer(banners, many=True, context={"request": request})
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def post(self, request, *args, **kwargs):
@@ -27,7 +27,7 @@ class BannerAPIView(APIView):
         user = request.user
         if not user.is_superuser and not user.is_staff and user.user_type != UserType.ADMIN.value:
             return Response({"message": "You don't have permission to access this"}, status=status.HTTP_403_FORBIDDEN)
-        serializer = BannerSerializer(data=request.data)
+        serializer = BannerSerializer(data=request.data, context={"request": request})
         if serializer.is_valid():
             serializer.save()
             return Response({"message": "Banner Created Successfully", "banner": serializer.data}, status=status.HTTP_201_CREATED)
@@ -46,7 +46,7 @@ class BannerAPIView(APIView):
         if not banner:
             return Response({"message": "Banner not found"}, status=status.HTTP_404_NOT_FOUND)
         
-        serializer = BannerSerializer(banner, data=request.data, partial=True)
+        serializer = BannerSerializer(banner, data=request.data, partial=True, context={"request": request})
         if serializer.is_valid():
             serializer.save()
             return Response({"message": "Banner Updated Successfully", "banner": serializer.data}, status=status.HTTP_200_OK)
