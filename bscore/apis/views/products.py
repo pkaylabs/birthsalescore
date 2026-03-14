@@ -29,7 +29,10 @@ class ProductAPIView(APIView):
         elif user.user_type == UserType.VENDOR.value:
             vendor = Vendor.objects.filter(user=user).first()
             if vendor and vendor.has_active_subscription() and vendor.can_create_or_view_product():
-                products = Product.objects.filter(vendor__vendor_id=user.vendor_profile['vendor_id']).order_by('-created_at')
+                products = Product.objects.filter(
+                    vendor__vendor_id=user.vendor_profile['vendor_id'],
+                    is_deleted=False,
+                ).order_by('-created_at')
             else:
                 return Response({"message": "Vendor profile not found or subscription expired"}, status=status.HTTP_400_BAD_REQUEST)
         else:
@@ -140,9 +143,11 @@ class ProductAPIView(APIView):
         user = request.user
         vendor = Vendor.objects.filter(user=user).first()
         if user.is_superuser or user.is_staff or user.user_type == UserType.ADMIN.value:
-            vendor_id = request.POST.get('vendor')
+            vendor_id = request.POST.get('vendor_id') or request.data.get('vendor_id')
+            print("Vendor ID: ", vendor_id)
             if vendor_id:
-                vendor = Vendor.objects.filter(id=vendor_id).first()
+                vendor = Vendor.objects.filter(vendor_id=vendor_id).first()
+                print("Vendor: ", vendor)
         # check if vendor has active subscription and can create or view product
         if not (vendor and vendor.has_active_subscription() and vendor.can_create_or_view_product()):
             return Response({"message": "Vendor profile not found or subscription expired"}, status=status.HTTP_400_BAD_REQUEST)
@@ -245,7 +250,7 @@ class ProductAPIView(APIView):
             # check if vendor has active subscription and can create or view product
             if not (vendor and vendor.has_active_subscription() and vendor.can_create_or_view_product()):
                 return Response({"message": "Vendor profile not found or subscription expired"}, status=status.HTTP_400_BAD_REQUEST)
-            product = Product.objects.filter(id=product_id, vendor=vendor).first()
+            product = Product.objects.filter(id=product_id, vendor=vendor, is_deleted=False).first()
 
         if not product:
             return Response({"message": "Product not found"}, status=status.HTTP_404_NOT_FOUND)
@@ -293,12 +298,19 @@ class ProductAPIView(APIView):
             # check if vendor has active subscription and can create or view product
             if not (vendor and vendor.has_active_subscription() and vendor.can_create_or_view_product()):
                 return Response({"message": "Vendor profile not found or subscription expired"}, status=status.HTTP_400_BAD_REQUEST)
-            product = Product.objects.filter(id=product_id, vendor=vendor).first()
+            product = Product.objects.filter(id=product_id, vendor=vendor, is_deleted=False).first()
 
         if not product:
             return Response({"message": "Product not found or permission denied"}, status=status.HTTP_404_NOT_FOUND)
-        
-        product.delete()
+
+        # Soft-delete: hide product from customers/vendors while preserving order/payout history.
+        if not product.is_deleted:
+            product.is_deleted = True
+            # Safety: ensure deleted products don't appear publicly.
+            product.is_published = False
+            product.in_stock = False
+            product.save(update_fields=['is_deleted', 'is_published', 'in_stock', 'updated_at'])
+
         return Response({"message": "Product deleted successfully"}, status=status.HTTP_200_OK)
 
 
@@ -390,6 +402,10 @@ class ProductRatingsAPIView(APIView):
         if not product_id:
             return Response({"message": "product_id is required"}, status=status.HTTP_400_BAD_REQUEST)
 
+        # Hide soft-deleted products from public access.
+        if not Product.objects.filter(id=product_id, is_deleted=False).exists():
+            return Response({"message": "Product not found"}, status=status.HTTP_404_NOT_FOUND)
+
         ratings = ProductRating.objects.filter(product_id=product_id).select_related('user').order_by('-created_at')
         serializer = ProductRatingSerializer(ratings, many=True, context={"request": request})
         return Response(serializer.data, status=status.HTTP_200_OK)
@@ -405,6 +421,8 @@ class ProductRatingsAPIView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         product = serializer.validated_data.get('product')
+        if getattr(product, 'is_deleted', False):
+            return Response({"message": "Product not found"}, status=status.HTTP_404_NOT_FOUND)
         rating_value = serializer.validated_data.get('rating')
         comment = serializer.validated_data.get('comment')
 

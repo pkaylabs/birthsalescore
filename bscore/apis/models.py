@@ -36,6 +36,7 @@ class Product(models.Model):
     # Optional extra features. Vendors can configure these per product.
     available_colors = models.JSONField(default=list, blank=True)
     available_sizes = models.JSONField(default=list, blank=True)
+    is_deleted = models.BooleanField(default=False, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -450,9 +451,9 @@ class Payment(models.Model):
         return uuid.uuid4().hex[:14]
     
     payment_id = models.CharField(max_length=255, unique=True, default=get_payment_id, editable=False)
-    order = models.ForeignKey(Order, on_delete=models.PROTECT, related_name='payments', null=True)
-    booking = models.ForeignKey(ServiceBooking, on_delete=models.PROTECT, related_name='payments', null=True)
-    subscription = models.ForeignKey(Subscription, on_delete=models.PROTECT, related_name='payments', null=True)
+    order = models.ForeignKey(Order, on_delete=models.PROTECT, related_name='payments', null=True, blank=True)
+    booking = models.ForeignKey(ServiceBooking, on_delete=models.PROTECT, related_name='payments', null=True, blank=True)
+    subscription = models.ForeignKey(Subscription, on_delete=models.PROTECT, related_name='payments', null=True, blank=True)
     user = models.ForeignKey(User, on_delete=models.PROTECT, related_name='payments')
     vendor = models.ForeignKey(Vendor, on_delete=models.PROTECT, related_name='payments',  null=True)
     amount = models.DecimalField(max_digits=10, decimal_places=2)

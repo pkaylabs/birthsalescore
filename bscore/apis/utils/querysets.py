@@ -29,6 +29,7 @@ def filter_products_for_public(products_qs):
             _sub_end_date=latest_end_date,
             _sub_can_create_product=latest_can_create_product,
         )
+        .filter(is_deleted=False)
         .filter(
             Q(vendor__isnull=True)
             | (Q(_sub_end_date__gte=today) & Q(_sub_can_create_product=True))

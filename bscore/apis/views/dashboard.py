@@ -27,7 +27,7 @@ class DashboardAPIView(APIView):
         if user.user_type == UserType.VENDOR.value and not user.is_superuser:
             vendor = Vendor.objects.filter(user=user).first()
             wallet = Wallet.objects.filter(vendor=vendor).first()
-            products = Product.objects.filter(vendor=vendor).count()
+            products = Product.objects.filter(vendor=vendor, is_deleted=False).count()
             # technical dept
             orders = len([ord for ord in Order.objects.all() if ord.vendor_id == vendor.vendor_id])
             sales_today = sum([p.amount for p in Payment.objects.filter(

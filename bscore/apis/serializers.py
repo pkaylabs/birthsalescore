@@ -8,6 +8,7 @@ from rest_framework import serializers
 
 from accounts.models import *
 from apis.models import *
+from apis.utils.querysets import filter_products_for_public
 
 
 def _to_absolute_url(*, request, url: str | None) -> str | None:
@@ -322,6 +323,7 @@ class ProductRatingSerializer(serializers.ModelSerializer):
         read_only_fields = ('user', 'created_at', 'updated_at')
 
 class OrderItemSerializer(serializers.ModelSerializer):
+    product = serializers.PrimaryKeyRelatedField(queryset=Product.objects.filter(is_deleted=False))
     product_name = serializers.ReadOnlyField()
     class Meta:
         model = OrderItem
@@ -365,6 +367,19 @@ class PlaceOrderSerializer(serializers.ModelSerializer):
             product = item.get('product')
             if not product:
                 errors.append({"index": idx, "detail": "product is required"})
+                continue
+
+            # Block soft-deleted products.
+            if getattr(product, 'is_deleted', False):
+                errors.append({"index": idx, "field": "product", "detail": "Product is not available"})
+                continue
+
+            # Block unpublished or subscription-ineligible vendor products.
+            allowed = filter_products_for_public(
+                Product.objects.filter(id=product.id, is_published=True, is_deleted=False)
+            ).exists()
+            if not allowed:
+                errors.append({"index": idx, "field": "product", "detail": "Product is not available"})
                 continue
 
             chosen_color = item.get('color')

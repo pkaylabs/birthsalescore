@@ -39,6 +39,13 @@ class ProductExtraImagesAPIView(APIView):
         if not product:
             return False
 
+        # Vendors cannot manage soft-deleted products.
+        if getattr(product, 'is_deleted', False):
+            user = getattr(request, 'user', None)
+            if user and (user.is_superuser or IsAdminOnly().has_permission(request, self)):
+                return True
+            return False
+
         user = request.user
         if not (user and user.is_authenticated):
             return False

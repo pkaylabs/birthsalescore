@@ -100,6 +100,16 @@ class PublicAccessTests(TestCase):
             vendor=active_vendor,
         )
 
+        deleted_product = Product.objects.create(
+            name="Deleted Product",
+            description="Soft-deleted should be filtered out",
+            price="8.00",
+            category=category,
+            is_published=True,
+            vendor=active_vendor,
+            is_deleted=True,
+        )
+
         # Platform-owned product (vendor is null) should always be included.
         platform_product = Product.objects.create(
             name="Platform Product",
@@ -124,3 +134,4 @@ class PublicAccessTests(TestCase):
         self.assertIn(active_product.id, returned_ids)
         self.assertIn(platform_product.id, returned_ids)
         self.assertNotIn(expired_product.id, returned_ids)
+        self.assertNotIn(deleted_product.id, returned_ids)
