@@ -1,3 +1,5 @@
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -133,3 +135,66 @@ class ServiceFeesAPIView(APIView):
 
         fee.delete()
         return Response({"message": "Service fee deleted successfully"}, status=status.HTTP_200_OK)
+
+
+class ActiveServiceFeeAPIView(APIView):
+    """Public endpoint for checkout to fetch current service fee config.
+
+    Optional query params:
+    - amount: decimal amount to compute the fee against (typically items subtotal).
+    """
+
+    permission_classes = (permissions.AllowAny,)
+
+    @extend_schema(
+        summary='Get active service fee (public)',
+        responses={200: OpenApiResponse(description='Active service fee config')},
+        examples=[
+            OpenApiExample(
+                'Active Service Fee (Percentage)',
+                value={
+                    'service_fee': {'id': 2, 'fee_type': 'PERCENTAGE', 'value': '5.00', 'is_active': True},
+                    'computed_fee_amount': '1.50',
+                    'computed_on_amount': '30.00',
+                },
+                response_only=True,
+            ),
+            OpenApiExample(
+                'Active Service Fee (None)',
+                value={'service_fee': None, 'computed_fee_amount': '0.00'},
+                response_only=True,
+            ),
+        ],
+    )
+    def get(self, request, *args, **kwargs):
+        fee = ServiceFee.objects.filter(is_active=True).order_by('-created_at').first()
+
+        amount_param = request.query_params.get('amount')
+        computed_fee_amount = Decimal('0.00')
+        computed_on_amount = None
+
+        if amount_param not in (None, ''):
+            try:
+                computed_on_amount = Decimal(str(amount_param))
+                if computed_on_amount < 0:
+                    return Response({"message": "amount must be >= 0"}, status=status.HTTP_400_BAD_REQUEST)
+            except (InvalidOperation, TypeError, ValueError):
+                return Response({"message": "Invalid amount"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if fee and fee.value is not None:
+            if computed_on_amount is not None:
+                if fee.fee_type == 'FLAT':
+                    computed_fee_amount = Decimal(fee.value)
+                else:
+                    computed_fee_amount = (computed_on_amount * Decimal(fee.value) / Decimal('100')).quantize(
+                        Decimal('0.01'), rounding=ROUND_HALF_UP
+                    )
+
+        payload = {
+            'service_fee': ServiceFeeSerializer(fee, context={'request': request}).data if fee else None,
+            'computed_fee_amount': str(computed_fee_amount),
+        }
+        if computed_on_amount is not None:
+            payload['computed_on_amount'] = str(computed_on_amount)
+
+        return Response(payload, status=status.HTTP_200_OK)

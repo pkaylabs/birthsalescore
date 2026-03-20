@@ -128,7 +128,9 @@ class Order(models.Model):
     # Order can contain items from multiple vendors.
     items = models.ManyToManyField(OrderItem, related_name='orders')
     location = models.ForeignKey('Location', on_delete=models.SET_NULL, null=True, blank=True, related_name='orders')
+    other_location = models.CharField(max_length=255, blank=True, null=True) # used if location is 'Other'
     delivery_fee_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    service_fee_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     customer_phone = models.CharField(max_length=15, blank=True, null=True)
     status = models.CharField(max_length=50, choices=[('Pending', 'Pending'), ('Completed', 'Completed'), ('Cancelled', 'Cancelled')], default='Pending')
     created_at = models.DateTimeField(auto_now_add=True)
@@ -153,14 +155,14 @@ class Order(models.Model):
 
     @property
     def total_amount(self):
-        """Total amount payable for the order (items total + delivery fee)."""
+        """Total amount payable for the order (items total + delivery fee + service fee)."""
         items_total = 0
         for item in self.items.all():
             try:
                 items_total += item.price
             except Exception:
                 items_total += 0
-        return items_total + (self.delivery_fee_amount or 0)
+        return items_total + (self.delivery_fee_amount or 0) + (self.service_fee_amount or 0)
     
     @property
     def vendor_id(self) -> str:
@@ -246,6 +248,9 @@ class Location(models.Model):
     LOCATION_CATEGORY_CHOICES = [
         ('DEPARTMENT', 'Department'),
         ('HALL', 'Hall'),
+        ('HOSTEL', 'Hostel'),
+        ('OFF CAMPUS', 'Off Campus'),
+        ('OTHER', 'Other'),
     ]
 
     name = models.CharField(max_length=255)

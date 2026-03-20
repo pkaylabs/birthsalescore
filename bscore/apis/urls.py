@@ -61,4 +61,5 @@ urlpatterns += [
     path('locations/', views.LocationsAPIView.as_view(), name='locations'),
     path('deliveryfees/', views.DeliveryFeesAPIView.as_view(), name='delivery_fees'),
     path('servicefees/', views.ServiceFeesAPIView.as_view(), name='service_fees'),
+    path('servicefee/', views.ActiveServiceFeeAPIView.as_view(), name='service_fee_active'),
 ]

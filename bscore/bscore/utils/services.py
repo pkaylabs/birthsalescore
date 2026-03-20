@@ -111,19 +111,13 @@ def can_cashout(request, amount: float = 0.0):
 def get_payment_amount(request, cashout: bool = False, subscription = None, order = None, booking = None):
     '''get the amount to be paid'''
     if order:
-        print("Before order = order.total_amount")
         amount = getattr(order, 'total_amount', None)
         if amount is None:
             amount = order.total_price
-        print("After order = order.total_amount")
     elif booking:
-        print("Before booking = booking.service.price")
         amount = booking.service.price
-        print("After booking = booking.service.price")
     elif subscription:
-        print("Before subscription = subscription.package.package_price")
         amount = subscription.package.package_price
-        print("After subscription = subscription.package.package_price")
     else:
         if cashout:
             # if it's a cashout, get the amount from the request data
@@ -199,10 +193,7 @@ def execute_momo_transaction(request, type, user=None, order=None, booking=None,
         if vendor is not None and vendor.get_wallet() is not None:
             wallet = vendor.get_wallet()
     # print("After wallet = vendor.get_wallet()")
-    print("Before get_payment_amount")
     amount_res = get_payment_amount(request=request, cashout=withdrawal, subscription=subscription, order=order, booking=booking)
-    print("After get_payment_amount")
-    print("Amount response: ", amount_res)
     if amount_res.get('api_status') != status.HTTP_200_OK:
         return {
             "transaction_status": "failed",

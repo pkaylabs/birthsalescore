@@ -48,7 +48,8 @@ class DashboardAPIView(APIView):
             payments = Payment.objects.all().order_by('-created_at')[:5]
             sales_today = sum([p.amount for p in Payment.objects.filter(
                 created_at__gte=start_of_day,
-                created_at__lt=end_of_day
+                created_at__lt=end_of_day,
+                status='SUCCESS'
             )])
 
         data = {

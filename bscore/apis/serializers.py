@@ -1,5 +1,5 @@
 import json
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 
 from django.conf import settings
 from django.contrib.auth import authenticate
@@ -349,10 +349,10 @@ class PlaceOrderSerializer(serializers.ModelSerializer):
     items = OrderItemSerializer(many=True)
     # Accept flexible input (Location id or name), then resolve to Location FK.
     location = serializers.CharField()
-    
+    other_location = serializers.CharField(required=False, allow_null=True)
     class Meta:
         model = Order
-        fields = ['user', 'items', 'status', 'location', 'customer_phone']
+        fields = ['user', 'items', 'status', 'location', 'other_location', 'customer_phone']
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
@@ -438,9 +438,36 @@ class PlaceOrderSerializer(serializers.ModelSerializer):
         delivery_fee_amount = self.context.get('_delivery_fee_amount')
         if delivery_fee_amount in (None, ""):
             delivery_fee_amount = Decimal('0.00')
+
+        # Compute service fee from active ServiceFee config.
+        items_subtotal = Decimal('0.00')
+        for item_data in items_data:
+            product = item_data['product']
+            quantity = item_data.get('quantity', 1) or 1
+            try:
+                items_subtotal += (Decimal(product.price) * Decimal(quantity))
+            except Exception:
+                # If anything goes wrong, fall back to 0 for safety.
+                items_subtotal += Decimal('0.00')
+
+        service_fee_amount = Decimal('0.00')
+        try:
+            active_fee = ServiceFee.objects.filter(is_active=True).order_by('-created_at').first()
+            if active_fee and active_fee.value is not None:
+                if active_fee.fee_type == 'FLAT':
+                    service_fee_amount = Decimal(active_fee.value)
+                else:
+                    # Percentage applied to items subtotal (not including delivery fee).
+                    service_fee_amount = (items_subtotal * Decimal(active_fee.value) / Decimal('100')).quantize(
+                        Decimal('0.01'), rounding=ROUND_HALF_UP
+                    )
+        except Exception:
+            service_fee_amount = Decimal('0.00')
+
         order = Order.objects.create(
             **validated_data,
             delivery_fee_amount=delivery_fee_amount,
+            service_fee_amount=service_fee_amount,
         )
         order_items = []
         for item_data in items_data:
