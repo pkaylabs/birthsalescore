@@ -1,0 +1,17 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Run refund tests",
+			"type": "shell",
+			"command": "c:/Users/branana/Desktop/Github Repos/birthsalescore/bscore/venv/Scripts/python.exe",
+			"args": [
+				"manage.py",
+				"test",
+				"apis.tests.test_refund_user"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		}
+	]
+}

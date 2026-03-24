@@ -555,6 +555,15 @@ def finalize_paystack_payment(reference: str):
             "api_status": status.HTTP_404_NOT_FOUND,
         }
 
+    # Never override a refunded payment.
+    if payment.status == PaymentStatus.REFUNDED.value:
+        serializer = PaymentSerializer(payment)
+        return {
+            "status": payment.status,
+            "transaction": serializer.data,
+            "api_status": status.HTTP_200_OK,
+        }
+
     # If Paystack verification failed (bad reference or Paystack error), don't mutate local state.
     if not verify.get("status") or not verify.get("data"):
         serializer = PaymentSerializer(payment)
@@ -580,6 +589,15 @@ def finalize_paystack_payment(reference: str):
                 "status": "failed",
                 "message": "Payment not found",
                 "api_status": status.HTTP_404_NOT_FOUND,
+            }
+
+        # Never override a refunded payment.
+        if payment.status == PaymentStatus.REFUNDED.value:
+            serializer = PaymentSerializer(payment)
+            return {
+                "status": payment.status,
+                "transaction": serializer.data,
+                "api_status": status.HTTP_200_OK,
             }
 
         already_success = (

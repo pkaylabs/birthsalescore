@@ -87,6 +87,13 @@ class PaymentAdmin(admin.ModelAdmin):
     list_display = ('payment_id', 'order', 'user', 'amount', 'status', 'created_at')
     search_fields = ('payment_id', 'order__id', 'user__name')
 
+
+@admin.register(Refund)
+class RefundAdmin(admin.ModelAdmin):
+    list_display = ('reference', 'payment', 'amount', 'phone', 'provider_code', 'status', 'created_at')
+    search_fields = ('reference', 'payment__payment_id', 'phone')
+    list_filter = ('status', 'currency', 'recipient_type')
+
 @admin.register(ServiceBooking)
 class ServiceBookingAdmin(admin.ModelAdmin):
     list_display = ('service', 'user', 'status', 'created_at',)

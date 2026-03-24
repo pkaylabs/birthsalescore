@@ -14,6 +14,7 @@ class PaymentStatus(Enum):
     PENDING = 'PENDING'
     SUCCESS = 'SUCCESS'
     FAILED = 'FAILED'
+    REFUNDED = 'REFUNDED'
 
 
 class ServiceStatus(Enum):

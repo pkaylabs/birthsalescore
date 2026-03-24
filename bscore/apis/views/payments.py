@@ -4,6 +4,7 @@ import json
 
 from django.conf import settings
 from django.utils import timezone
+from django.db import transaction
 from django.db.models import F, Q
 from rest_framework import permissions, status
 from rest_framework.response import Response
@@ -13,8 +14,13 @@ from drf_spectacular.utils import OpenApiExample, OpenApiResponse, extend_schema
 
 import datetime
 from accounts.models import Subscription, Vendor
-from apis.models import Order, Payment, PaystackWebhookEvent, ServiceBooking
-from apis.serializers import PaymentSerializer
+from apis.models import Order, Payment, PaystackWebhookEvent, Refund, ServiceBooking
+from apis.serializers import (
+    PaymentSerializer,
+    RefundDetailSerializer,
+    RefundInitiateSerializer,
+    RefundListSerializer,
+)
 from bscore.utils.const import PaymentStatus, PaymentStatusCode, PaymentType, UserType
 from bscore.utils.services import (
     can_cashout,
@@ -26,6 +32,11 @@ from bscore.utils.services import (
     initiate_paystack_cashout,
     finalize_paystack_cashout,
     verify_paystack_cashout,
+    paystack_create_transfer_recipient,
+    paystack_initiate_transfer,
+    paystack_finalize_transfer,
+    paystack_verify_transfer,
+    _map_paystack_transfer_status,
     paystack_list_banks,
 )
 
@@ -497,7 +508,7 @@ class PaystackWebhookAPI(APIView):
 
         # Mark any previously queued events for this reference as processed once the payment is terminal.
         # Terminal states: SUCCESS / FAILED.
-        terminal_statuses = {PaymentStatus.SUCCESS.value, PaymentStatus.FAILED.value}
+        terminal_statuses = {PaymentStatus.SUCCESS.value, PaymentStatus.FAILED.value, PaymentStatus.REFUNDED.value}
         if result.get('status') in terminal_statuses:
             try:
                 last_error = None
@@ -530,6 +541,11 @@ class PaymentStatusCheckAPI(APIView):
             return Response({
                 "message": "Payment not found",
             }, status=status.HTTP_404_NOT_FOUND)
+
+        # Never override refunded payments.
+        if payment.status == PaymentStatus.REFUNDED.value:
+            serializer = PaymentSerializer(payment)
+            return Response(serializer.data, status=status.HTTP_200_OK)
         response = get_transaction_status(payment.payment_id)
         provider_code = response.get('status_code')
 
@@ -565,6 +581,324 @@ class PaymentStatusCheckAPI(APIView):
 
         serializer = PaymentSerializer(payment)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class RefundUserAPI(APIView):
+    """Admin-only endpoint to refund a user via Paystack transfer.
+
+    Idempotency: one Refund per Payment (enforced by Refund.payment OneToOne + locking).
+    Re-calling the endpoint will verify/finalize the existing transfer instead of creating a new one.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(
+        summary='List refunds (admin only)',
+        description='Returns a reverse-chronological list of refund records. Admin-only.',
+        responses={
+            200: RefundListSerializer(many=True),
+            401: OpenApiResponse(description='Authentication required'),
+            403: OpenApiResponse(description='Not authorized'),
+        },
+    )
+    def get(self, request, *args, **kwargs):
+        user = request.user
+        if not (user.is_superuser or user.is_staff or user.user_type == UserType.ADMIN.value):
+            return Response({"message": "Not authorized"}, status=status.HTTP_403_FORBIDDEN)
+
+        refunds = Refund.objects.select_related('payment', 'refunded_by').order_by('-created_at')
+        serializer = RefundListSerializer(refunds, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        summary='Refund a user (admin only)',
+        description=(
+            'Initiates or reconciles a Paystack refund transfer for a given `payment_id`. '
+            'Idempotent: only one Refund can exist per Payment; repeat calls will not send funds twice.'
+        ),
+        request=RefundInitiateSerializer,
+        responses={
+            200: RefundDetailSerializer,
+            400: OpenApiResponse(description='Validation error / transfer initiation failed'),
+            401: OpenApiResponse(description='Authentication required'),
+            403: OpenApiResponse(description='Not authorized'),
+            404: OpenApiResponse(description='Payment not found'),
+        },
+        examples=[
+            OpenApiExample(
+                'Initiate Refund (Mobile Money)',
+                value={
+                    'payment_id': 'pay_123',
+                    'phone': '233500000000',
+                    'provider_code': 'MTN',
+                    'recipient_type': 'mobile_money',
+                    'currency': 'GHS',
+                    'reason': 'Refund',
+                },
+                request_only=True,
+            ),
+            OpenApiExample(
+                'Finalize OTP (If Required)',
+                value={
+                    'payment_id': 'pay_123',
+                    'otp': '123456',
+                    'transfer_code': 'TRF_xxx',
+                },
+                request_only=True,
+            ),
+        ],
+    )
+    def post(self, request, *args, **kwargs):
+        user = request.user
+        if not (user.is_superuser or user.is_staff or user.user_type == UserType.ADMIN.value):
+            return Response({"message": "Not authorized"}, status=status.HTTP_403_FORBIDDEN)
+
+        req_ser = RefundInitiateSerializer(data=request.data)
+        if not req_ser.is_valid():
+            return Response(req_ser.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        validated = req_ser.validated_data
+
+        payment_id = validated.get('payment_id')
+        phone = validated.get('phone') or request.data.get('account_number')
+        provider_code = validated.get('provider_code') or request.data.get('bank_code') or request.data.get('network')
+        recipient_type = validated.get('recipient_type') or 'mobile_money'
+        currency = validated.get('currency') or 'GHS'
+        name = validated.get('name')
+        reason = validated.get('reason') or 'Refund'
+
+        otp = validated.get('otp')
+        transfer_code = validated.get('transfer_code')
+
+        if not getattr(settings, 'PAYSTACK_SECRET_KEY', None):
+            return Response({"message": "Paystack secret key not configured"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        with transaction.atomic():
+            payment = (
+                Payment.objects.select_for_update()
+                .select_related('user')
+                .filter(payment_id=str(payment_id))
+                .first()
+            )
+            if not payment:
+                return Response({"message": "Payment not found"}, status=status.HTTP_404_NOT_FOUND)
+
+            # Guard: only refund successful payments.
+            if not (
+                payment.status == PaymentStatus.SUCCESS.value
+                and payment.status_code == PaymentStatusCode.SUCCESS.value
+            ) and payment.status != PaymentStatus.REFUNDED.value:
+                return Response({
+                    "message": "Only successful payments can be refunded",
+                    "payment": PaymentSerializer(payment).data,
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            refund = Refund.objects.select_for_update().filter(payment=payment).first()
+
+            # If refund already succeeded, ensure payment is marked refunded and return.
+            if refund and refund.status == PaymentStatus.SUCCESS.value:
+                if payment.status != PaymentStatus.REFUNDED.value:
+                    payment.status = PaymentStatus.REFUNDED.value
+                    payment.refunded_date = timezone.now()
+                    payment.save()
+                return Response({
+                    "status": "already_refunded",
+                    "payment": PaymentSerializer(payment).data,
+                    "refund": RefundDetailSerializer(refund).data,
+                }, status=status.HTTP_200_OK)
+
+            # If we have an existing refund transfer, reconcile it (verify or finalize+verify).
+            if refund:
+                # If previous attempt failed before a transfer was created, allow retry initiation
+                # (same Refund/reference => idempotent, avoids double-send).
+                if refund.transfer_code is None and not (otp and transfer_code):
+                    # Allow updating recipient fields for a retry.
+                    if phone:
+                        refund.phone = str(phone)
+                    if provider_code:
+                        refund.provider_code = str(provider_code)
+                    if recipient_type:
+                        refund.recipient_type = str(recipient_type)
+                    if currency:
+                        refund.currency = str(currency)
+                    if name:
+                        refund.name = str(name)[:255]
+                    if reason:
+                        refund.reason = str(reason)[:255]
+                    refund.save()
+
+                    if refund.phone and refund.provider_code:
+                        recipient_name = str(refund.name or getattr(payment.user, 'name', None) or 'Refund Recipient')
+                        recipient_resp = paystack_create_transfer_recipient(
+                            recipient_type=str(refund.recipient_type or 'mobile_money'),
+                            name=recipient_name,
+                            account_number=str(refund.phone),
+                            bank_code=str(refund.provider_code),
+                            currency=str(refund.currency or 'GHS'),
+                            metadata={
+                                "refund_reference": refund.reference,
+                                "payment_id": payment.payment_id,
+                            },
+                        )
+                        if recipient_resp.get('status') and recipient_resp.get('data'):
+                            refund.recipient_code = (recipient_resp.get('data') or {}).get('recipient_code')
+                            transfer_resp = paystack_initiate_transfer(
+                                amount_minor=int(payment.amount * 100),
+                                recipient_code=str(refund.recipient_code),
+                                reason=str(refund.reason or 'Refund')[:255],
+                                reference=str(refund.reference),
+                                currency=str(refund.currency or 'GHS'),
+                            )
+                            refund.provider_response = {"recipient": recipient_resp, "transfer": transfer_resp}
+                            if transfer_resp.get('status') and transfer_resp.get('data'):
+                                transfer_data = transfer_resp.get('data') or {}
+                                refund.transfer_code = transfer_data.get('transfer_code') or refund.transfer_code
+                                mapped_status, mapped_code = _map_paystack_transfer_status(transfer_data.get('status'))
+                                refund.status = mapped_status
+                                refund.status_code = mapped_code
+                            else:
+                                refund.status = PaymentStatus.FAILED.value
+                                refund.status_code = PaymentStatusCode.FAILED.value
+                            refund.save()
+                            if refund.status == PaymentStatus.SUCCESS.value:
+                                payment.status = PaymentStatus.REFUNDED.value
+                                payment.refunded_date = timezone.now()
+                                payment.save()
+                            return Response({
+                                "status": refund.status,
+                                "payment": PaymentSerializer(payment).data,
+                                "refund": RefundDetailSerializer(refund).data,
+                            }, status=status.HTTP_200_OK)
+
+                finalize_response = None
+                if otp and transfer_code:
+                    finalize_response = paystack_finalize_transfer(transfer_code=str(transfer_code), otp=str(otp))
+
+                verify_resp = paystack_verify_transfer(str(refund.reference))
+                refund.provider_response = {
+                    "verify": verify_resp,
+                    **({"finalize": finalize_response} if finalize_response is not None else {}),
+                }
+
+                if verify_resp.get('status') and verify_resp.get('data'):
+                    transfer_status = (verify_resp.get('data') or {}).get('status')
+                    mapped_status, mapped_code = _map_paystack_transfer_status(transfer_status)
+                    refund.status = mapped_status
+                    refund.status_code = mapped_code
+                    try:
+                        tc = (verify_resp.get('data') or {}).get('transfer_code')
+                        if tc:
+                            refund.transfer_code = tc
+                    except Exception:
+                        pass
+                    refund.save()
+
+                    if refund.status == PaymentStatus.SUCCESS.value:
+                        payment.status = PaymentStatus.REFUNDED.value
+                        payment.refunded_date = timezone.now()
+                        payment.save()
+
+                    return Response({
+                        "status": refund.status,
+                        "payment": PaymentSerializer(payment).data,
+                        "refund": RefundDetailSerializer(refund).data,
+                    }, status=status.HTTP_200_OK)
+
+                refund.save()
+                return Response({
+                    "status": refund.status,
+                    "message": verify_resp.get('message') or 'Paystack transfer verification failed',
+                    "payment": PaymentSerializer(payment).data,
+                    "refund": RefundDetailSerializer(refund).data,
+                    "provider_response": verify_resp,
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # New refund request: validate required recipient fields.
+            missing = [k for k, v in {'phone': phone, 'provider_code': provider_code}.items() if not v]
+            if missing:
+                return Response({"message": f"Missing fields: {', '.join(missing)}"}, status=status.HTTP_400_BAD_REQUEST)
+
+            recipient_name = str(name or getattr(payment.user, 'name', None) or 'Refund Recipient')
+            refund = Refund.objects.create(
+                payment=payment,
+                refunded_by=user,
+                recipient_type=str(recipient_type),
+                phone=str(phone),
+                provider_code=str(provider_code),
+                currency=str(currency),
+                name=recipient_name[:255],
+                amount=payment.amount,
+                reason=str(reason)[:255] if reason else None,
+                status=PaymentStatus.PENDING.value,
+                status_code=PaymentStatusCode.PENDING.value,
+            )
+
+            recipient_resp = paystack_create_transfer_recipient(
+                recipient_type=str(recipient_type),
+                name=recipient_name,
+                account_number=str(phone),
+                bank_code=str(provider_code),
+                currency=str(currency),
+                metadata={
+                    "refund_reference": refund.reference,
+                    "payment_id": payment.payment_id,
+                },
+            )
+            if not recipient_resp.get('status') or not recipient_resp.get('data'):
+                refund.status = PaymentStatus.FAILED.value
+                refund.status_code = PaymentStatusCode.FAILED.value
+                refund.provider_response = {"recipient": recipient_resp}
+                refund.save()
+                return Response({
+                    "status": refund.status,
+                    "message": recipient_resp.get('message') or 'Failed to create Paystack transfer recipient',
+                    "payment": PaymentSerializer(payment).data,
+                    "refund": RefundDetailSerializer(refund).data,
+                    "provider_response": recipient_resp,
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            recipient_code = (recipient_resp.get('data') or {}).get('recipient_code')
+            refund.recipient_code = recipient_code
+            refund.provider_response = {"recipient": recipient_resp}
+            refund.save()
+
+            transfer_resp = paystack_initiate_transfer(
+                amount_minor=int(payment.amount * 100),
+                recipient_code=str(recipient_code),
+                reason=str(reason)[:255] if reason else None,
+                reference=str(refund.reference),
+                currency=str(currency),
+            )
+            refund.provider_response = {"recipient": recipient_resp, "transfer": transfer_resp}
+            if not transfer_resp.get('status') or not transfer_resp.get('data'):
+                refund.status = PaymentStatus.FAILED.value
+                refund.status_code = PaymentStatusCode.FAILED.value
+                refund.save()
+                return Response({
+                    "status": refund.status,
+                    "message": transfer_resp.get('message') or 'Failed to initiate Paystack transfer',
+                    "payment": PaymentSerializer(payment).data,
+                    "refund": RefundDetailSerializer(refund).data,
+                    "provider_response": transfer_resp,
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            transfer_data = transfer_resp.get('data') or {}
+            refund.transfer_code = transfer_data.get('transfer_code') or refund.transfer_code
+            mapped_status, mapped_code = _map_paystack_transfer_status(transfer_data.get('status'))
+            refund.status = mapped_status
+            refund.status_code = mapped_code
+            refund.save()
+
+            if refund.status == PaymentStatus.SUCCESS.value:
+                payment.status = PaymentStatus.REFUNDED.value
+                payment.refunded_date = timezone.now()
+                payment.save()
+
+            return Response({
+                "status": refund.status,
+                "payment": PaymentSerializer(payment).data,
+                "refund": RefundDetailSerializer(refund).data,
+            }, status=status.HTTP_200_OK)
 
 
 class PaystackVerifyAPI(APIView):

@@ -469,6 +469,7 @@ class Payment(models.Model):
     status_code = models.CharField(max_length=10, blank=True, null=True)
     vendor_credited_debited = models.BooleanField(default=False) # True if vendor has been credited or debited
     subscription_effects_applied = models.BooleanField(default=False)  # True once subscription dates have been updated for this payment
+    refunded_date = models.DateTimeField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -504,6 +505,42 @@ class Payment(models.Model):
         else:
             msg = f"Payment for User {self.user.name}"
         return  f'{self.payment_id} - ' + msg
+
+
+class Refund(models.Model):
+    """Tracks a refund transfer made for an existing Payment.
+
+    This is used for auditing and idempotency (one refund per Payment).
+    """
+
+    def generate_reference():
+        return uuid.uuid4().hex
+
+    payment = models.OneToOneField(Payment, on_delete=models.PROTECT, related_name='refund')
+    refunded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='refunds_issued')
+
+    recipient_type = models.CharField(max_length=50, default='mobile_money')
+    phone = models.CharField(max_length=20)
+    provider_code = models.CharField(max_length=50)  # Paystack bank_code/provider code for mobile money
+    currency = models.CharField(max_length=10, default='GHS')
+    name = models.CharField(max_length=255, blank=True, null=True)
+
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    reason = models.CharField(max_length=255, blank=True, null=True)
+
+    reference = models.CharField(max_length=255, unique=True, default=generate_reference, editable=False, db_index=True)
+    recipient_code = models.CharField(max_length=255, blank=True, null=True)
+    transfer_code = models.CharField(max_length=255, blank=True, null=True)
+
+    status = models.CharField(max_length=10, default=PaymentStatus.PENDING.value)
+    status_code = models.CharField(max_length=10, blank=True, null=True)
+    provider_response = models.JSONField(default=dict, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Refund {self.reference} for {self.payment.payment_id}"
 
 
 class PaystackWebhookEvent(models.Model):

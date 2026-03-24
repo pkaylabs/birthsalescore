@@ -700,6 +700,103 @@ class PaymentSerializer(serializers.ModelSerializer):
         model = Payment
         fields = '__all__'
 
+
+class RefundSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Refund
+        fields = '__all__'
+
+
+class RefundInitiateSerializer(serializers.Serializer):
+    """Request serializer for initiating/reconciling a refund."""
+
+    payment_id = serializers.CharField()
+    phone = serializers.CharField(required=False, allow_blank=False)
+    provider_code = serializers.CharField(required=False, allow_blank=False)
+
+    recipient_type = serializers.CharField(required=False, default='mobile_money')
+    currency = serializers.CharField(required=False, default='GHS')
+    name = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    reason = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+
+    # For OTP finalization flows (optional)
+    transfer_code = serializers.CharField(required=False, allow_blank=False)
+    otp = serializers.CharField(required=False, allow_blank=False)
+
+
+class RefundDetailSerializer(serializers.ModelSerializer):
+    payment = PaymentSerializer(read_only=True)
+    refunded_by_email = serializers.SerializerMethodField()
+    refunded_by_name = serializers.SerializerMethodField()
+
+    def get_refunded_by_email(self, obj):
+        u = getattr(obj, 'refunded_by', None)
+        return getattr(u, 'email', None) if u else None
+
+    def get_refunded_by_name(self, obj):
+        u = getattr(obj, 'refunded_by', None)
+        return getattr(u, 'name', None) if u else None
+
+    class Meta:
+        model = Refund
+        fields = [
+            'id',
+            'reference',
+            'payment',
+            'refunded_by',
+            'refunded_by_email',
+            'refunded_by_name',
+            'recipient_type',
+            'phone',
+            'provider_code',
+            'currency',
+            'name',
+            'amount',
+            'reason',
+            'recipient_code',
+            'transfer_code',
+            'status',
+            'status_code',
+            'provider_response',
+            'created_at',
+            'updated_at',
+        ]
+
+
+class RefundListSerializer(serializers.ModelSerializer):
+    payment_id = serializers.SerializerMethodField()
+    refunded_date = serializers.SerializerMethodField()
+    refunded_by_name = serializers.SerializerMethodField()
+
+    def get_payment_id(self, obj):
+        p = getattr(obj, 'payment', None)
+        return getattr(p, 'payment_id', None) if p else None
+
+    def get_refunded_date(self, obj):
+        p = getattr(obj, 'payment', None)
+        return getattr(p, 'refunded_date', None) if p else None
+
+    def get_refunded_by_name(self, obj):
+        u = getattr(obj, 'refunded_by', None)
+        return getattr(u, 'name', None) if u else None
+
+    class Meta:
+        model = Refund
+        fields = [
+            'id',
+            'reference',
+            'payment_id',
+            'amount',
+            'phone',
+            'provider_code',
+            'currency',
+            'status',
+            'status_code',
+            'refunded_by_name',
+            'refunded_date',
+            'created_at',
+        ]
+
 class ChangePasswordSerializer(serializers.Serializer):
     '''Serializer for changing password'''
     old_password = serializers.CharField()

@@ -47,6 +47,7 @@ urlpatterns += [
     path('makepayment/paystack/', views.MakePaystackPaymentAPI.as_view(), name='make_payment_paystack'),
     path('paymentcallback/', views.PaymentCallbackAPI.as_view(), name='payment_callback'),
     path('paymentstatus/', views.PaymentStatusCheckAPI.as_view(), name='payment_status'),
+    path('refunduser/', views.RefundUserAPI.as_view(), name='refund_user'),
     path('paystack/verify/', views.PaystackVerifyAPI.as_view(), name='paystack_verify'),
     path('paystack/status/', views.PaystackVerifyAPI.as_view(), name='paystack_status'),
     path('paystack/webhook/', views.PaystackWebhookAPI.as_view(), name='paystack_webhook'),
