@@ -399,6 +399,7 @@ class ServiceBooking(models.Model):
     date = models.DateField()
     time = models.TimeField()
     location = models.CharField(max_length=255, blank=True, null=True)
+    other_location = models.CharField(max_length=255, blank=True, null=True)  # used if location is 'Other'
     status = models.CharField(max_length=50, choices=[('Pending', 'Pending'), ('Confirmed', 'Confirmed'), ('Cancelled', 'Cancelled'), ('Completed', 'Completed')], default='Pending')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

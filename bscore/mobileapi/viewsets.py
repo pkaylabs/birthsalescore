@@ -4,9 +4,11 @@ from django.db.models import Q
 from rest_framework import permissions, status, viewsets
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from drf_spectacular.utils import extend_schema, OpenApiExample, OpenApiResponse
 
 from apis.models import (
 	Banner,
+	ServiceBooking,
 	UserVideoAdState,
 	Product,
 	ProductCategory,
@@ -20,6 +22,8 @@ from apis.serializers import (
 	ProductSerializer,
 	ServiceSerializer,
 )
+
+from .serializers import MobileServiceBookingCreateSerializer, MobileServiceBookingSerializer
 
 
 class MobileHomepageAPIView(APIView):
@@ -123,3 +127,114 @@ class BannerViewSet(viewsets.ReadOnlyModelViewSet):
 
 	def get_queryset(self):
 		return Banner.objects.filter(is_active=True).order_by('-created_at')
+
+
+class MobileMyBookingsAPIView(APIView):
+	"""List bookings belonging to the authenticated mobile user/customer."""
+
+	permission_classes = (permissions.IsAuthenticated,)
+	serializer_class = MobileServiceBookingSerializer
+
+	@extend_schema(
+		summary='List my service bookings',
+		description='Returns the authenticated user/customer\'s service bookings (newest first).',
+		responses={
+			200: OpenApiResponse(
+				response=MobileServiceBookingSerializer(many=True),
+				description='List of bookings',
+				examples=[
+					OpenApiExample(
+						'Bookings Response',
+						value=[
+							{
+								"id": 12,
+								"service": 3,
+								"service_name": "Home Cleaning",
+								"service_price": 150.00,
+								"date": "2026-03-31",
+								"time": "14:00:00",
+								"location": "Hall A",
+								"other_location": None,
+								"status": "Pending",
+								"payment_status": "Pending",
+								"vendor_name": "Sparkle Services",
+								"vendor_phone": "+233501234567",
+								"created_at": "2026-03-31T10:00:00Z",
+								"updated_at": "2026-03-31T10:00:00Z"
+							}
+						],
+					)
+				],
+			),
+			401: OpenApiResponse(description='Authentication required'),
+		},
+		tags=['Mobile - Bookings'],
+	)
+	def get(self, request, *args, **kwargs):
+		bookings = (
+			ServiceBooking.objects.filter(user=request.user)
+			.select_related('service', 'service__vendor')
+			.order_by('-created_at')
+		)
+		serializer = MobileServiceBookingSerializer(bookings, many=True, context={"request": request})
+		return Response(serializer.data, status=status.HTTP_200_OK)
+
+	@extend_schema(
+		summary='Create a service booking',
+		description=(
+			'Creates a new service booking for the authenticated user/customer. '
+			'The service must be published and the vendor must have an active subscription.'
+		),
+		request=MobileServiceBookingCreateSerializer,
+		responses={
+			201: OpenApiResponse(
+				response=MobileServiceBookingSerializer,
+				description='Booking created',
+				examples=[
+					OpenApiExample(
+						'Create Booking Response',
+						value={
+							"id": 12,
+							"service": 3,
+							"service_name": "Home Cleaning",
+							"service_price": 150.00,
+							"date": "2026-03-31",
+							"time": "14:00:00",
+							"location": "Hall A",
+							"other_location": None,
+							"status": "Pending",
+							"payment_status": "None",
+							"vendor_name": "Sparkle Services",
+							"vendor_phone": "+233501234567",
+							"created_at": "2026-03-31T10:00:00Z",
+							"updated_at": "2026-03-31T10:00:00Z",
+						},
+						response_only=True,
+					)
+				],
+			),
+			400: OpenApiResponse(description='Invalid request body'),
+			401: OpenApiResponse(description='Authentication required'),
+		},
+		examples=[
+			OpenApiExample(
+				'Create Booking Request',
+				value={
+					"service": 3,
+					"date": "2026-03-31",
+					"time": "14:00:00",
+					"location": "Other",
+					"other_location": "Near the main gate",
+				},
+				request_only=True,
+			)
+		],
+		tags=['Mobile - Bookings'],
+	)
+	def post(self, request, *args, **kwargs):
+		serializer = MobileServiceBookingCreateSerializer(data=request.data, context={"request": request})
+		serializer.is_valid(raise_exception=True)
+		booking = serializer.save(user=request.user)
+
+		response_serializer = MobileServiceBookingSerializer(booking, context={"request": request})
+		return Response(response_serializer.data, status=status.HTTP_201_CREATED)

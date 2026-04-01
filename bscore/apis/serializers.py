@@ -640,6 +640,12 @@ class ServiceFeeSerializer(serializers.ModelSerializer):
         return attrs
 
 
+class ActiveServiceFeeResponseSerializer(serializers.Serializer):
+    service_fee = ServiceFeeSerializer(required=False, allow_null=True)
+    computed_fee_amount = serializers.CharField()
+    computed_on_amount = serializers.CharField(required=False)
+
+
 class VideoAdSerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         rep = super().to_representation(instance)
@@ -699,6 +705,38 @@ class PaymentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Payment
         fields = '__all__'
+
+
+class MakePaystackPaymentRequestSerializer(serializers.Serializer):
+    """Request body for initializing a Paystack payment."""
+
+    subscription = serializers.IntegerField(required=False, min_value=1)
+    order = serializers.IntegerField(required=False, min_value=1)
+    booking = serializers.IntegerField(required=False, min_value=1)
+
+    # Optional overrides; email is required only if user.email is not set.
+    email = serializers.EmailField(required=False, allow_blank=True)
+    callback_url = serializers.URLField(required=False, allow_blank=True)
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        provided = [k for k in ['subscription', 'order', 'booking'] if attrs.get(k) is not None]
+        if len(provided) != 1:
+            raise serializers.ValidationError(
+                'Exactly one of subscription, order, or booking is required.'
+            )
+        return attrs
+
+
+class MakePaystackPaymentResponseSerializer(serializers.Serializer):
+    """Response body for Paystack initialization."""
+
+    status = serializers.CharField()
+    message = serializers.CharField(required=False, allow_blank=True)
+    authorization_url = serializers.URLField(required=False, allow_blank=True)
+    reference = serializers.CharField(required=False, allow_blank=True)
+    transaction = PaymentSerializer(required=False)
+    api_status = serializers.IntegerField(required=False)
 
 
 class RefundSerializer(serializers.ModelSerializer):

@@ -16,6 +16,8 @@ import datetime
 from accounts.models import Subscription, Vendor
 from apis.models import Order, Payment, PaystackWebhookEvent, Refund, ServiceBooking
 from apis.serializers import (
+    MakePaystackPaymentRequestSerializer,
+    MakePaystackPaymentResponseSerializer,
     PaymentSerializer,
     RefundDetailSerializer,
     RefundInitiateSerializer,
@@ -318,6 +320,67 @@ class MakePaystackPaymentAPI(APIView):
     '''API Endpoint to initialize Paystack payment (web/mobile).'''
     permission_classes = [permissions.IsAuthenticated]
 
+    @extend_schema(
+        summary='Initialize Paystack payment',
+        description=(
+            'Initializes a Paystack transaction for an order, service booking, or subscription. '
+            'Provide exactly one of `order`, `booking`, or `subscription`. '
+            '`email` is required only if the authenticated user has no email set.'
+        ),
+        request=MakePaystackPaymentRequestSerializer,
+        responses={
+            200: OpenApiResponse(
+                response=MakePaystackPaymentResponseSerializer,
+                description='Paystack transaction initialized',
+            ),
+            400: OpenApiResponse(description='Validation error / resource not found'),
+            401: OpenApiResponse(description='Authentication required'),
+            500: OpenApiResponse(description='Paystack not configured or initialization error'),
+        },
+        examples=[
+            OpenApiExample(
+                'Initialize (Order)',
+                value={
+                    'order': 123,
+                    'email': 'customer@example.com',
+                    'callback_url': 'https://example.com/paystack/callback',
+                },
+                request_only=True,
+            ),
+            OpenApiExample(
+                'Initialize (Service Booking)',
+                value={
+                    'booking': 12,
+                    'email': 'customer@example.com',
+                },
+                request_only=True,
+            ),
+            OpenApiExample(
+                'Initialized Response',
+                value={
+                    'status': 'initialized',
+                    'authorization_url': 'https://checkout.paystack.com/xxxx',
+                    'reference': 'psk_ref_123',
+                    'transaction': {
+                        'payment_id': 'psk_ref_123',
+                        'amount': '10.00',
+                        'status': 'Pending',
+                        'payment_method': 'Paystack',
+                    },
+                    'api_status': 200,
+                },
+                response_only=True,
+            ),
+            OpenApiExample(
+                'Error Response',
+                value={
+                    'message': 'Order or booking or subscription is required',
+                },
+                response_only=True,
+            ),
+        ],
+        tags=['Payments'],
+    )
     def post(self, request, *args, **kwargs):
         subscription = request.data.get('subscription', None)
         order = request.data.get('order', None)

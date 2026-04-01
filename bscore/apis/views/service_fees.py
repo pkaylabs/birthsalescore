@@ -4,10 +4,10 @@ from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from drf_spectacular.utils import OpenApiExample, OpenApiResponse, extend_schema
+from drf_spectacular.utils import OpenApiExample, OpenApiParameter, OpenApiResponse, OpenApiTypes, extend_schema
 
 from apis.models import ServiceFee
-from apis.serializers import ServiceFeeSerializer
+from apis.serializers import ActiveServiceFeeResponseSerializer, ServiceFeeSerializer
 from bscore.utils.permissions import IsAdminOnly
 
 
@@ -148,7 +148,19 @@ class ActiveServiceFeeAPIView(APIView):
 
     @extend_schema(
         summary='Get active service fee (public)',
-        responses={200: OpenApiResponse(description='Active service fee config')},
+        parameters=[
+            OpenApiParameter(
+                name='amount',
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description='Optional amount to compute the fee against (decimal as string, e.g. "30.00").',
+            ),
+        ],
+        responses={
+            200: ActiveServiceFeeResponseSerializer,
+            400: OpenApiResponse(description='Invalid amount'),
+        },
         examples=[
             OpenApiExample(
                 'Active Service Fee (Percentage)',
@@ -162,6 +174,11 @@ class ActiveServiceFeeAPIView(APIView):
             OpenApiExample(
                 'Active Service Fee (None)',
                 value={'service_fee': None, 'computed_fee_amount': '0.00'},
+                response_only=True,
+            ),
+            OpenApiExample(
+                'Invalid Amount (Error)',
+                value={'message': 'Invalid amount'},
                 response_only=True,
             ),
         ],

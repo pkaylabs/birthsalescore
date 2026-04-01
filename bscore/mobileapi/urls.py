@@ -5,10 +5,14 @@ from .viewsets import (
 	BannerViewSet,
 	CategoryViewSet,
 	MobileHomepageAPIView,
+	MobileMyBookingsAPIView,
 	ProductViewSet,
 	ServiceViewSet,
 )
 from .auth import (
+	MobileForgotPasswordRequestOTPAPI,
+	MobileForgotPasswordResetAPI,
+	MobileForgotPasswordVerifyOTPAPI,
 	MobileLoginAPI,
 	MobileRegisterAPI,
 	MobileVerifyOTPAPI,
@@ -31,10 +35,15 @@ router.register(r'banners', BannerViewSet, basename='mobile-banners')
 urlpatterns = [
 	path('homepage/', MobileHomepageAPIView.as_view(), name='homepage'),
 	path('locations/', MobileLocationsAPIView.as_view(), name='locations'),
+	path('bookings/', MobileMyBookingsAPIView.as_view(), name='my_bookings'),
 	# Auth endpoints
 	path('login/', MobileLoginAPI.as_view(), name='login'),
 	path('register/', MobileRegisterAPI.as_view(), name='register'),
 	path('verifyotp/', MobileVerifyOTPAPI.as_view(), name='verify_otp'),
+	# Forgot password flow
+	path('forgotpassword/otp/', MobileForgotPasswordRequestOTPAPI.as_view(), name='forgot_password_otp'),
+	path('forgotpassword/verify/', MobileForgotPasswordVerifyOTPAPI.as_view(), name='forgot_password_verify_otp'),
+	path('forgotpassword/reset/', MobileForgotPasswordResetAPI.as_view(), name='forgot_password_reset'),
 	path('profile/', MobileUserProfileAPIView.as_view(), name='profile'),
 	path('changepassword/', MobileChangePasswordAPI.as_view(), name='change_password'),
 	path('contactsupport/', MobileContactSupportAPI.as_view(), name='contact_support'),

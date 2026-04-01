@@ -9,6 +9,7 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from drf_spectacular.utils import extend_schema, OpenApiExample, OpenApiResponse
 
 from accounts.models import OTP, User
+from bscore.utils.services import send_sms
 from apis.serializers import (
     LoginSerializer,
     RegisterUserSerializer,
@@ -18,6 +19,12 @@ from apis.serializers import (
     UserAvatarSerializer,
 )
 from bscore import settings
+
+from .serializers import (
+    MobileForgotPasswordResetSerializer,
+    MobilePhoneOTPSerializer,
+    MobilePhoneSerializer,
+)
 
 
 class MobileLoginAPI(APIView):
@@ -114,13 +121,7 @@ class MobileVerifyOTPAPI(APIView):
         return Response({'message': 'OTP sent successfully'}, status=status.HTTP_200_OK)
 
     @extend_schema(
-        request={
-            'type': 'object',
-            'properties': {
-                'phone': {'type': 'string'},
-                'otp': {'type': 'string'}
-            }
-        },
+        request=MobilePhoneOTPSerializer,
         responses={
             200: OpenApiResponse(
                 description='OTP verified',
@@ -172,6 +173,166 @@ class MobileVerifyOTPAPI(APIView):
             'user': UserSerializer(user, context={'request': request}).data,
             'token': AuthToken.objects.create(user)[1],
         }, status=status.HTTP_200_OK)
+
+
+class MobileForgotPasswordRequestOTPAPI(APIView):
+    """Request an OTP (sent via SMS) for password reset."""
+
+    permission_classes = (permissions.AllowAny,)
+    serializer_class = MobilePhoneSerializer
+
+    @extend_schema(
+        summary='Forgot password: request OTP',
+        description='Sends a password-reset OTP to the given phone number via SMS.',
+        request=MobilePhoneSerializer,
+        responses={
+            200: OpenApiResponse(
+                description='OTP sent',
+                examples=[OpenApiExample('Success', value={"message": "OTP sent successfully"})],
+            ),
+            400: OpenApiResponse(description='Validation error'),
+            404: OpenApiResponse(description='User not found'),
+            500: OpenApiResponse(description='Failed to send OTP'),
+        },
+        examples=[
+            OpenApiExample('Request OTP', value={"phone": "233200000000"}, request_only=True),
+        ],
+        tags=['Mobile - Auth'],
+    )
+    def post(self, request, *args, **kwargs):
+        serializer = self.serializer_class(data=request.data)
+        if not serializer.is_valid():
+            return Response({'error': 'Phone number is required', 'errors': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+
+        phone = str(serializer.validated_data.get('phone') or '').strip()
+        if not phone:
+            return Response({'error': 'Phone number is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = User.objects.filter(phone=phone).first()
+        if not user:
+            return Response({'error': 'User account not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        code = random.randint(1000, 9999)
+        try:
+            OTP.objects.filter(phone=phone).delete()
+            OTP.objects.create(phone=phone, otp=str(code))
+            msg = (
+                f'Birthnon Password Reset\n\nYour OTP is {code}. '
+                'It expires in 30 minutes.\n\nRegards,\nThe Birthnon Team'
+            )
+            sms_res = send_sms(msg, [phone])
+            if sms_res is False:
+                raise Exception('SMS send failed')
+        except Exception:
+            return Response({'error': 'Failed to send OTP'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return Response({'message': 'OTP sent successfully'}, status=status.HTTP_200_OK)
+
+
+class MobileForgotPasswordVerifyOTPAPI(APIView):
+    """Verify an OTP for password reset."""
+
+    permission_classes = (permissions.AllowAny,)
+    serializer_class = MobilePhoneOTPSerializer
+
+    @extend_schema(
+        summary='Forgot password: verify OTP',
+        description='Verifies the password-reset OTP for the provided phone number.',
+        request=MobilePhoneOTPSerializer,
+        responses={
+            200: OpenApiResponse(
+                description='OTP verified',
+                examples=[OpenApiExample('Success', value={"message": "OTP verified"})],
+            ),
+            400: OpenApiResponse(description='Invalid or expired OTP'),
+            404: OpenApiResponse(description='User not found'),
+        },
+        examples=[
+            OpenApiExample('Verify OTP', value={"phone": "233200000000", "otp": "1234"}, request_only=True),
+        ],
+        tags=['Mobile - Auth'],
+    )
+    def post(self, request, *args, **kwargs):
+        serializer = self.serializer_class(data=request.data)
+        if not serializer.is_valid():
+            return Response({'error': 'Invalid data', 'errors': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+
+        phone = str(serializer.validated_data.get('phone') or '').strip()
+        otp = str(serializer.validated_data.get('otp') or '').strip()
+        user = User.objects.filter(phone=phone).first()
+        if not user:
+            return Response({'error': 'User account not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        otp_obj = OTP.objects.filter(phone=phone, otp=otp).first()
+        if not otp_obj:
+            return Response({'error': 'Invalid OTP'}, status=status.HTTP_400_BAD_REQUEST)
+        if otp_obj.is_expired():
+            return Response({'error': 'OTP has expired'}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({'message': 'OTP verified'}, status=status.HTTP_200_OK)
+
+
+class MobileForgotPasswordResetAPI(APIView):
+    """Reset password using phone + OTP."""
+
+    permission_classes = (permissions.AllowAny,)
+    serializer_class = MobileForgotPasswordResetSerializer
+
+    @extend_schema(
+        summary='Forgot password: reset password',
+        description='Resets the password for the given phone after validating the OTP.',
+        request=MobileForgotPasswordResetSerializer,
+        responses={
+            200: OpenApiResponse(
+                description='Password reset successful',
+                examples=[OpenApiExample('Success', value={"message": "Password reset successful"})],
+            ),
+            400: OpenApiResponse(description='Validation error / invalid OTP'),
+            404: OpenApiResponse(description='User not found'),
+        },
+        examples=[
+            OpenApiExample(
+                'Reset Password',
+                value={
+                    "phone": "233200000000",
+                    "otp": "1234",
+                    "new_password": "newpass456",
+                    "confirm_password": "newpass456",
+                },
+                request_only=True,
+            ),
+        ],
+        tags=['Mobile - Auth'],
+    )
+    def post(self, request, *args, **kwargs):
+        serializer = self.serializer_class(data=request.data)
+        if not serializer.is_valid():
+            first_field = next(iter(serializer.errors), None)
+            first_error = serializer.errors.get(first_field, ["Invalid data"])[0] if first_field else "Invalid data"
+            return Response({
+                "status": "error",
+                "error_message": str(first_error),
+                "errors": serializer.errors,
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        phone = str(serializer.validated_data.get('phone') or '').strip()
+        otp = str(serializer.validated_data.get('otp') or '').strip()
+        new_password = serializer.validated_data.get('new_password')
+
+        user = User.objects.filter(phone=phone).first()
+        if not user:
+            return Response({'error': 'User account not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        otp_obj = OTP.objects.filter(phone=phone, otp=otp).first()
+        if not otp_obj:
+            return Response({'error': 'Invalid OTP'}, status=status.HTTP_400_BAD_REQUEST)
+        if otp_obj.is_expired():
+            return Response({'error': 'OTP has expired'}, status=status.HTTP_400_BAD_REQUEST)
+
+        user.set_password(new_password)
+        user.save()
+        OTP.objects.filter(phone=phone).delete()
+        return Response({'message': 'Password reset successful'}, status=status.HTTP_200_OK)
 
 
 class MobileRegisterAPI(APIView):
