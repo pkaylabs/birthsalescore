@@ -276,12 +276,12 @@ def execute_momo_transaction(request, type, user=None, order=None, booking=None,
         else:
             print("CAN'T DETECT TRANSACTION TYPE")
 
-            # Apply any other post-success effects idempotently (e.g., subscription dates).
-            try:
-                apply_payment_success_effects(transaction)
-            except Exception:
-                # Don't block the payment response; consider logging in future.
-                pass
+        # Apply any other post-success effects idempotently (e.g., subscription dates).
+        try:
+            apply_payment_success_effects(transaction)
+        except Exception:
+            # Don't block the payment response; consider logging in future.
+            pass
 
         return {
             "transaction_status": "success",
@@ -388,10 +388,15 @@ def _apply_payment_success_effects_locked(payment: Payment) -> Payment:
                 import datetime
                 start_date = datetime.date.today()
 
-            # If subscription is still active, extend from current end_date.
-            # If expired (or missing end_date), restart from today.
+            # First successful payment activates from today. Later successful
+            # payments extend any currently active paid time.
             current_end = subscription.end_date
-            if current_end and current_end >= start_date:
+            has_prior_successful_payment = Payment.objects.filter(
+                subscription=subscription,
+                status=PaymentStatus.SUCCESS.value,
+                status_code=PaymentStatusCode.SUCCESS.value,
+            ).exclude(id=payment.id).exists()
+            if has_prior_successful_payment and current_end and current_end >= start_date:
                 subscription.end_date = current_end + timedelta(days=30)
             else:
                 subscription.start_date = start_date
