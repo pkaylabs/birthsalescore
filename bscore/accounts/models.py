@@ -16,7 +16,7 @@ from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
 from django.db import models
 from django.utils import timezone
 
-from bscore.utils.const import ConstList, UserType
+from bscore.utils.const import ConstList, PaymentStatus, PaymentStatusCode, UserType
 
 from .manager import AccountManager
 
@@ -176,13 +176,22 @@ class Subscription(models.Model):
     @property
     def expired(self):
         '''Check if the subscription is expired'''
-        # NOTE: LATER, check payment status before checking expiry
-        today = datetime.date.today()
-        if self.end_date:
-            return self.end_date < today
-        if self.start_date:
-            return (self.start_date + timedelta(days=30)) < today
-        return (self.created_at + timedelta(days=30)).date() < today
+        today = timezone.localdate()
+        if not self.has_successful_payment:
+            return True
+        if not self.end_date:
+            return True
+        return self.end_date < today
+
+    @property
+    def has_successful_payment(self):
+        '''Check if the subscription has a successful payment.'''
+        from apis.models import Payment
+        return Payment.objects.filter(
+            subscription=self,
+            status=PaymentStatus.SUCCESS.value,
+            status_code=PaymentStatusCode.SUCCESS.value,
+        ).exists()
 
     @property
     def vendor_name(self):
@@ -196,7 +205,7 @@ class Subscription(models.Model):
     def payment_status(self):
         '''check if subscription has been paid for'''
         from apis.models import Payment
-        payment = Payment.objects.filter(subscription=self).first()
+        payment = Payment.objects.filter(subscription=self).order_by('-created_at').first()
         if payment:
             return payment.status
         return None
@@ -207,10 +216,7 @@ class Subscription(models.Model):
         amount = self.package.package_price
         return amount
 
-    # set the end date to 30 days from the start date
     def save(self, *args, **kwargs):
-        if not self.end_date:
-            self.end_date = self.start_date + timedelta(days=30)
         super().save(*args, **kwargs)
 
     def __str__(self):
