@@ -6,8 +6,8 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from accounts.models import Subscription, SubscriptionPackage, User, Vendor
-from apis.models import Product, ProductCategory
-from bscore.utils.const import UserType
+from apis.models import Payment, Product, ProductCategory
+from bscore.utils.const import PaymentStatus, PaymentStatusCode, UserType
 
 
 class PublicAccessTests(TestCase):
@@ -85,11 +85,18 @@ class PublicAccessTests(TestCase):
             vendor_email="active-vendor@example.com",
             vendor_address="Accra",
         )
-        Subscription.objects.create(
+        active_subscription = Subscription.objects.create(
             vendor=active_vendor,
             package=pkg,
             start_date=timezone.localdate() - timedelta(days=1),
             end_date=timezone.localdate() + timedelta(days=30),
+        )
+        Payment.objects.create(
+            subscription=active_subscription,
+            user=active_user,
+            amount=pkg.package_price,
+            status=PaymentStatus.SUCCESS.value,
+            status_code=PaymentStatusCode.SUCCESS.value,
         )
         active_product = Product.objects.create(
             name="Active Product",
