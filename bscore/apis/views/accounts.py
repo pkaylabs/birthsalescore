@@ -194,6 +194,22 @@ class SubscriptionPackageAPIView(APIView):
             serializer.save()
             return Response(serializer.data, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def put(self, request, *args, **kwargs):
+        user = request.user
+        if not (user.is_superuser or user.is_staff or user.user_type == UserType.ADMIN.value):
+            return Response({"message": "You are not authorised to edit packages"}, status=status.HTTP_403_FORBIDDEN)
+
+        package_id = request.data.get('package') or request.data.get('package_id')
+        package = SubscriptionPackage.objects.filter(id=package_id).first()
+        if not package:
+            return Response({"message": "Package not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = self.serializer_class(package, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({"message": "Package Updated Successfully", "package": serializer.data}, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
     def delete(self, request, *args, **kwargs):
         user = request.user

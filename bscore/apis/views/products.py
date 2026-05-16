@@ -151,6 +151,8 @@ class ProductAPIView(APIView):
         # check if vendor has active subscription and can create or view product
         if not (vendor and vendor.has_active_subscription() and vendor.can_create_or_view_product()):
             return Response({"message": "Vendor profile not found or subscription expired"}, status=status.HTTP_400_BAD_REQUEST)
+        if not vendor.can_create_more_products():
+            return Response({"message": "Product limit reached for current subscription package"}, status=status.HTTP_400_BAD_REQUEST)
         serializer = ProductSerializer(data=request.data, context={"request": request})
         if serializer.is_valid():
             if vendor:
@@ -552,7 +554,7 @@ class ServicesAPIView(APIView):
         elif user.user_type == UserType.VENDOR.value:
             # vendors get to see only their services
             vendor = Vendor.objects.filter(user=user).first()
-            if vendor and vendor.has_active_subscription() and vendor.can_create_or_view_product():
+            if vendor and vendor.has_active_subscription() and vendor.can_create_or_view_service():
                 services = Service.objects.filter(vendor=vendor).order_by('-created_at')
             else:
                 return Response({"message": "Vendor profile not found or subscription expired"}, status=status.HTTP_400_BAD_REQUEST)
@@ -569,8 +571,10 @@ class ServicesAPIView(APIView):
         if vendor_id and not vendor:
             vendor = Vendor.objects.filter(vendor_id=vendor_id).first()
         
-        if not (vendor and vendor.has_active_subscription() and vendor.can_create_or_view_product()):
+        if not (vendor and vendor.has_active_subscription() and vendor.can_create_or_view_service()):
             return Response({"message": "Vendor profile not found or subscription expired"}, status=status.HTTP_400_BAD_REQUEST)
+        if not vendor.can_create_more_services():
+            return Response({"message": "Service limit reached for current subscription package"}, status=status.HTTP_400_BAD_REQUEST)
         
         serializer = ServiceSerializer(data=request.data, context={"request": request})
 
@@ -608,7 +612,7 @@ class ServicesAPIView(APIView):
             service = Service.objects.filter(id=service_id).first()
         else:
             vendor = Vendor.objects.filter(user=user).first()
-            if vendor and vendor.has_active_subscription() and vendor.can_create_or_view_product():
+            if vendor and vendor.has_active_subscription() and vendor.can_create_or_view_service():
                 service = Service.objects.filter(vendor=vendor, id=service_id).first()
             else:
                 return Response({"message": "Vendor profile not found or subscription expired"}, status=status.HTTP_400_BAD_REQUEST)

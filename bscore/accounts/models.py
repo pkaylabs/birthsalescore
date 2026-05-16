@@ -129,6 +129,16 @@ class Vendor(models.Model):
         if subscription:
             return subscription.package.can_create_product
         return False
+
+    def can_create_more_products(self) -> bool:
+        '''Check if the vendor is under the product limit for their package.'''
+        subscription = Subscription.objects.filter(vendor=self).order_by('-created_at').first()
+        if not subscription or subscription.expired or not subscription.package.can_create_product:
+            return False
+
+        from apis.models import Product
+        current_products = Product.objects.filter(vendor=self, is_deleted=False).count()
+        return current_products < subscription.package.max_products
     
     def can_create_or_view_service(self) -> bool:
         '''Check if the vendor can create a service'''
@@ -136,6 +146,16 @@ class Vendor(models.Model):
         if subscription:
             return subscription.package.can_create_service
         return False
+
+    def can_create_more_services(self) -> bool:
+        '''Check if the vendor is under the service limit for their package.'''
+        subscription = Subscription.objects.filter(vendor=self).order_by('-created_at').first()
+        if not subscription or subscription.expired or not subscription.package.can_create_service:
+            return False
+
+        from apis.models import Service
+        current_services = Service.objects.filter(vendor=self).count()
+        return current_services < subscription.package.max_services
     
     def has_active_subscription(self) -> bool:
         '''Check if the vendor has an active subscription'''
@@ -155,6 +175,8 @@ class SubscriptionPackage(models.Model):
     package_price = models.DecimalField(max_digits=10, decimal_places=2)
     can_create_product = models.BooleanField(default=False)
     can_create_service = models.BooleanField(default=False)
+    max_products = models.PositiveIntegerField(default=5)
+    max_services = models.PositiveIntegerField(default=5)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
