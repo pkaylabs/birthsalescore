@@ -1,3 +1,4 @@
+from array import array
 import uuid
 
 from django.core.exceptions import ValidationError
@@ -329,8 +330,8 @@ class Order(models.Model):
         from bscore.utils.services import send_sms
         customer_msg = f'Hi, {self.customer_name}.\n\nThank you for shopping with us. We hope to see you soon.\n\nRegards.\nThe Birthnon Team'
         # notify customer
-        send_sms(customer_msg, [self.user.phone])
-        vendor_msg = f'Dear Vendor,\n\nA customer has placed a new order. Please login to your dashboard to see the order details.\n\nRegards.\nThe Birthnon Team'
+        send_sms(customer_msg, array([self.user.phone]))
+        vendor_msg = 'Dear Vendor,\n\nA customer has placed a new order. Please login to your dashboard to see the order details.\n\nRegards.\nThe Birthnon Team'
         # notify vendor
         vendor = self.items.all().first().product.vendor
         send_sms(vendor_msg, [vendor.vendor_phone])
@@ -517,6 +518,7 @@ class Ad(models.Model):
             return self.original_price - (self.original_price * (self.discount / 100))
         elif self.discount_type == 'Fixed':
             return self.original_price - self.discount
+        return self.original_price
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
