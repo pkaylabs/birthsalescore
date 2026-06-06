@@ -10,7 +10,7 @@ class ProductCategoryAdmin(admin.ModelAdmin):
 
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
-    list_display = ('id', 'name', 'vendor', 'price', 'category', 'in_stock', 'is_published')
+    list_display = ('id', 'name', 'vendor', 'price', 'category', 'stock_quantity', 'in_stock', 'is_published')
     search_fields = ('name', 'vendor__vendor_name', 'category__name')
 
 @admin.register(ProductImages)
@@ -29,6 +29,26 @@ class ProductRatingAdmin(admin.ModelAdmin):
     list_display = ('product', 'user', 'rating', 'created_at')
     search_fields = ('product__name', 'user__name', 'user__email', 'user__phone')
     list_filter = ('rating',)
+
+@admin.register(VendorPublishingCreditCoupon)
+class VendorPublishingCreditCouponAdmin(admin.ModelAdmin):
+    list_display = ('code', 'credit_type', 'product_credits', 'service_credits', 'max_redemptions', 'is_active', 'expires_at')
+    search_fields = ('code',)
+
+@admin.register(VendorPublishingCreditRedemption)
+class VendorPublishingCreditRedemptionAdmin(admin.ModelAdmin):
+    list_display = ('vendor', 'coupon', 'product_credits', 'service_credits', 'redeemed_at')
+    search_fields = ('vendor__vendor_name', 'coupon__code')
+
+@admin.register(VendorCustomerCoupon)
+class VendorCustomerCouponAdmin(admin.ModelAdmin):
+    list_display = ('code', 'vendor', 'discount_type', 'discount_value', 'max_redemptions', 'is_active', 'expires_at')
+    search_fields = ('code', 'vendor__vendor_name')
+
+@admin.register(VendorCustomerCouponRedemption)
+class VendorCustomerCouponRedemptionAdmin(admin.ModelAdmin):
+    list_display = ('coupon', 'order', 'customer', 'discount_amount', 'redeemed_at')
+    search_fields = ('coupon__code', 'customer__name', 'order__id')
 
 @admin.register(OrderItem)
 class OrderItemAdmin(admin.ModelAdmin):
