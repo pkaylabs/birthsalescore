@@ -3,6 +3,7 @@ from decimal import Decimal, ROUND_HALF_UP
 
 from django.conf import settings
 from django.contrib.auth import authenticate
+from django.db import transaction
 from django.db.models import Avg, Count
 from rest_framework import serializers
 
@@ -150,6 +151,7 @@ class ProductSerializer(serializers.ModelSerializer):
     rating = serializers.SerializerMethodField()
     ratings_count = serializers.SerializerMethodField()
     customer_can_rate_product = serializers.SerializerMethodField()
+    low_stock = serializers.ReadOnlyField()
 
     def get_rating(self, obj):
         # Prefer prefetched ratings to avoid extra queries when available.
@@ -237,6 +239,14 @@ class ProductSerializer(serializers.ModelSerializer):
             attrs['available_colors'] = self._normalize_str_list(attrs.get('available_colors'))
         if 'available_sizes' in attrs:
             attrs['available_sizes'] = self._normalize_str_list(attrs.get('available_sizes'))
+        if 'stock_quantity' in attrs:
+            attrs['in_stock'] = attrs.get('stock_quantity', 0) > 0
+        elif 'in_stock' in attrs:
+            if attrs.get('in_stock'):
+                current = getattr(self.instance, 'stock_quantity', 0) if self.instance else 0
+                attrs['stock_quantity'] = max(current, 1)
+            else:
+                attrs['stock_quantity'] = 0
         return attrs
 
     def get_images(self, obj):
@@ -322,6 +332,67 @@ class ProductRatingSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ('user', 'created_at', 'updated_at')
 
+
+class VendorPublishingCreditCouponSerializer(serializers.ModelSerializer):
+    times_redeemed = serializers.ReadOnlyField()
+    expired = serializers.ReadOnlyField()
+    redeemable = serializers.ReadOnlyField()
+
+    class Meta:
+        model = VendorPublishingCreditCoupon
+        fields = '__all__'
+        read_only_fields = ('created_by', 'created_at', 'updated_at')
+
+    def validate_code(self, value):
+        return str(value).strip().upper()
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        credit_type = attrs.get('credit_type', getattr(self.instance, 'credit_type', 'BOTH'))
+        product_credits = attrs.get('product_credits', getattr(self.instance, 'product_credits', 0))
+        service_credits = attrs.get('service_credits', getattr(self.instance, 'service_credits', 0))
+        if credit_type in ('PRODUCT', 'BOTH') and product_credits <= 0 and credit_type != 'SERVICE':
+            raise serializers.ValidationError({"product_credits": "Product credits must be greater than zero"})
+        if credit_type in ('SERVICE', 'BOTH') and service_credits <= 0 and credit_type != 'PRODUCT':
+            raise serializers.ValidationError({"service_credits": "Service credits must be greater than zero"})
+        return attrs
+
+
+class VendorPublishingCreditRedemptionSerializer(serializers.ModelSerializer):
+    coupon_code = serializers.ReadOnlyField(source='coupon.code')
+    vendor_name = serializers.ReadOnlyField(source='vendor.vendor_name')
+
+    class Meta:
+        model = VendorPublishingCreditRedemption
+        fields = '__all__'
+        read_only_fields = ('vendor', 'coupon', 'product_credits', 'service_credits', 'redeemed_at')
+
+
+class VendorCustomerCouponSerializer(serializers.ModelSerializer):
+    times_redeemed = serializers.ReadOnlyField()
+    expired = serializers.ReadOnlyField()
+    redeemable = serializers.ReadOnlyField()
+    vendor_name = serializers.ReadOnlyField()
+
+    class Meta:
+        model = VendorCustomerCoupon
+        fields = '__all__'
+        read_only_fields = ('vendor', 'created_at', 'updated_at')
+
+    def validate_code(self, value):
+        return str(value).strip().upper()
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        discount_type = attrs.get('discount_type', getattr(self.instance, 'discount_type', 'PERCENTAGE'))
+        discount_value = Decimal(attrs.get('discount_value', getattr(self.instance, 'discount_value', 0)))
+        if discount_value <= 0:
+            raise serializers.ValidationError({"discount_value": "Discount value must be greater than zero"})
+        if discount_type == 'PERCENTAGE' and discount_value > 100:
+            raise serializers.ValidationError({"discount_value": "Percentage discount cannot exceed 100"})
+        return attrs
+
+
 class OrderItemSerializer(serializers.ModelSerializer):
     product = serializers.PrimaryKeyRelatedField(queryset=Product.objects.filter(is_deleted=False))
     product_name = serializers.ReadOnlyField()
@@ -350,9 +421,10 @@ class PlaceOrderSerializer(serializers.ModelSerializer):
     # Accept flexible input (Location id or name), then resolve to Location FK.
     location = serializers.CharField()
     other_location = serializers.CharField(required=False, allow_null=True)
+    coupon_code = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     class Meta:
         model = Order
-        fields = ['user', 'items', 'status', 'location', 'other_location', 'customer_phone']
+        fields = ['user', 'items', 'status', 'location', 'other_location', 'customer_phone', 'coupon_code']
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
@@ -363,11 +435,24 @@ class PlaceOrderSerializer(serializers.ModelSerializer):
         items = attrs.get('items') or []
 
         errors = []
+        requested_quantities = {}
         for idx, item in enumerate(items):
             product = item.get('product')
             if not product:
                 errors.append({"index": idx, "detail": "product is required"})
                 continue
+
+            quantity = item.get('quantity', 1) or 1
+            try:
+                quantity = int(quantity)
+            except (TypeError, ValueError):
+                errors.append({"index": idx, "field": "quantity", "detail": "Quantity must be a whole number"})
+                continue
+            if quantity <= 0:
+                errors.append({"index": idx, "field": "quantity", "detail": "Quantity must be greater than zero"})
+                continue
+            item['quantity'] = quantity
+            requested_quantities[product.id] = requested_quantities.get(product.id, 0) + quantity
 
             # Block soft-deleted products.
             if getattr(product, 'is_deleted', False):
@@ -380,6 +465,10 @@ class PlaceOrderSerializer(serializers.ModelSerializer):
             ).exists()
             if not allowed:
                 errors.append({"index": idx, "field": "product", "detail": "Product is not available"})
+                continue
+
+            if not getattr(product, 'in_stock', False) or getattr(product, 'stock_quantity', 0) <= 0:
+                errors.append({"index": idx, "field": "product", "detail": "Product is out of stock"})
                 continue
 
             chosen_color = item.get('color')
@@ -409,6 +498,20 @@ class PlaceOrderSerializer(serializers.ModelSerializer):
                             "allowed": available,
                         })
 
+        for idx, item in enumerate(items):
+            product = item.get('product')
+            if not product:
+                continue
+            requested = requested_quantities.get(product.id, 0)
+            available = getattr(product, 'stock_quantity', 0)
+            if requested > available:
+                errors.append({
+                    "index": idx,
+                    "field": "quantity",
+                    "detail": f"Only {available} unit(s) available for this product",
+                    "available": available,
+                })
+
         if errors:
             raise serializers.ValidationError({"items": errors})
 
@@ -425,12 +528,51 @@ class PlaceOrderSerializer(serializers.ModelSerializer):
         fee = DeliveryFee.objects.filter(location=location_obj).first()
         delivery_fee_amount = fee.price if fee else Decimal('0.00')
 
+        coupon = None
+        discount_amount = Decimal('0.00')
+        coupon_code = (attrs.get('coupon_code') or '').strip().upper()
+        if coupon_code:
+            user = attrs.get('user')
+            coupon = VendorCustomerCoupon.objects.select_related('vendor').filter(code=coupon_code).first()
+            if not coupon:
+                raise serializers.ValidationError({"coupon_code": "Coupon not found"})
+            if not coupon.redeemable:
+                raise serializers.ValidationError({"coupon_code": "Coupon is expired, inactive, or fully redeemed"})
+            if user and VendorCustomerCouponRedemption.objects.filter(
+                coupon=coupon,
+                customer=user,
+            ).count() >= coupon.per_customer_limit:
+                raise serializers.ValidationError({"coupon_code": "You have already used this coupon"})
+
+            eligible_subtotal = Decimal('0.00')
+            for item in items:
+                product = item.get('product')
+                if product and getattr(product, 'vendor_id', None) == coupon.vendor_id:
+                    eligible_subtotal += Decimal(product.price) * Decimal(item.get('quantity', 1) or 1)
+
+            if eligible_subtotal <= 0:
+                raise serializers.ValidationError({"coupon_code": "Coupon is not valid for these products"})
+            if eligible_subtotal < Decimal(coupon.minimum_order_amount):
+                raise serializers.ValidationError({
+                    "coupon_code": f"Minimum eligible order amount is {coupon.minimum_order_amount}"
+                })
+
+            if coupon.discount_type == 'PERCENTAGE':
+                discount_amount = (eligible_subtotal * Decimal(coupon.discount_value) / Decimal('100')).quantize(
+                    Decimal('0.01'), rounding=ROUND_HALF_UP
+                )
+            else:
+                discount_amount = min(Decimal(coupon.discount_value), eligible_subtotal)
+
         # Store resolved objects for create().
         self.context['_location_obj'] = location_obj
         self.context['_delivery_fee_amount'] = delivery_fee_amount
+        self.context['_applied_coupon'] = coupon
+        self.context['_discount_amount'] = discount_amount
 
         # Store FK instance on the model field.
         attrs['location'] = location_obj
+        attrs['coupon_code'] = coupon_code or None
         return attrs
     
     def create(self, validated_data):
@@ -438,6 +580,8 @@ class PlaceOrderSerializer(serializers.ModelSerializer):
         delivery_fee_amount = self.context.get('_delivery_fee_amount')
         if delivery_fee_amount in (None, ""):
             delivery_fee_amount = Decimal('0.00')
+        applied_coupon = self.context.get('_applied_coupon')
+        discount_amount = self.context.get('_discount_amount') or Decimal('0.00')
 
         # Compute service fee from active ServiceFee config.
         items_subtotal = Decimal('0.00')
@@ -464,27 +608,77 @@ class PlaceOrderSerializer(serializers.ModelSerializer):
         except Exception:
             service_fee_amount = Decimal('0.00')
 
-        order = Order.objects.create(
-            **validated_data,
-            delivery_fee_amount=delivery_fee_amount,
-            service_fee_amount=service_fee_amount,
-        )
-        order_items = []
-        for item_data in items_data:
-            product = item_data['product']
-            quantity = item_data.get('quantity', 1)
-            color = item_data.get('color')
-            size = item_data.get('size')
-            order_item = OrderItem.objects.create(
-                product=product,
-                quantity=quantity,
-                color=color,
-                size=size,
+        with transaction.atomic():
+            if applied_coupon:
+                applied_coupon = VendorCustomerCoupon.objects.select_for_update().filter(id=applied_coupon.id).first()
+                if not applied_coupon or not applied_coupon.redeemable:
+                    raise serializers.ValidationError({"coupon_code": "Coupon is expired, inactive, or fully redeemed"})
+                if VendorCustomerCouponRedemption.objects.filter(
+                    coupon=applied_coupon,
+                    customer=validated_data.get('user'),
+                ).count() >= applied_coupon.per_customer_limit:
+                    raise serializers.ValidationError({"coupon_code": "You have already used this coupon"})
+
+            product_ids = [item_data['product'].id for item_data in items_data]
+            locked_products = {
+                product.id: product
+                for product in Product.objects.select_for_update().filter(id__in=product_ids)
+            }
+            requested_quantities = {}
+            for item_data in items_data:
+                product_id = item_data['product'].id
+                quantity = item_data.get('quantity', 1) or 1
+                requested_quantities[product_id] = requested_quantities.get(product_id, 0) + quantity
+
+            stock_errors = []
+            for product_id, quantity in requested_quantities.items():
+                product = locked_products.get(product_id)
+                available = getattr(product, 'stock_quantity', 0) if product else 0
+                if not product or available < quantity:
+                    stock_errors.append({
+                        "product": product_id,
+                        "detail": f"Only {available} unit(s) available for this product",
+                        "available": available,
+                    })
+            if stock_errors:
+                raise serializers.ValidationError({"items": stock_errors})
+
+            order = Order.objects.create(
+                **validated_data,
+                delivery_fee_amount=delivery_fee_amount,
+                service_fee_amount=service_fee_amount,
+                applied_coupon=applied_coupon,
+                discount_amount=discount_amount,
             )
-            order_items.append(order_item)
-        
-        # Add all items to the order
-        order.items.set(order_items)
+            order_items = []
+            for item_data in items_data:
+                product = locked_products[item_data['product'].id]
+                quantity = item_data.get('quantity', 1)
+                color = item_data.get('color')
+                size = item_data.get('size')
+                order_item = OrderItem.objects.create(
+                    product=product,
+                    quantity=quantity,
+                    color=color,
+                    size=size,
+                )
+                order_items.append(order_item)
+
+            order.items.set(order_items)
+
+            for product_id, quantity in requested_quantities.items():
+                product = locked_products[product_id]
+                product.stock_quantity -= quantity
+                product.save(update_fields=['stock_quantity', 'in_stock', 'updated_at'])
+
+            if applied_coupon and discount_amount > 0:
+                VendorCustomerCouponRedemption.objects.create(
+                    coupon=applied_coupon,
+                    order=order,
+                    customer=order.user,
+                    discount_amount=discount_amount,
+                )
+
         return order
 
 
