@@ -3,6 +3,8 @@ import uuid
 from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
+from django.db.models import Sum
+from django.utils import timezone
 
 from accounts.models import Subscription, User, Vendor
 from bscore.utils.const import (ConstList, PaymentMethod, PaymentStatus,
@@ -30,6 +32,8 @@ class Product(models.Model):
     price = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     category = models.ForeignKey(ProductCategory, on_delete=models.CASCADE, related_name='products')
     in_stock = models.BooleanField(default=True)
+    stock_quantity = models.PositiveIntegerField(default=0)
+    low_stock_threshold = models.PositiveIntegerField(default=5)
     is_published = models.BooleanField(default=False)
     vendor = models.ForeignKey(Vendor, on_delete=models.CASCADE, related_name='products', null=True, blank=True)
     image = models.ImageField(upload_to='products/', blank=True, null=True)
@@ -47,6 +51,14 @@ class Product(models.Model):
         if self.vendor:
             return self.vendor.vendor_name
         return "Birthnon Services"
+
+    @property
+    def low_stock(self) -> bool:
+        return 0 < self.stock_quantity <= self.low_stock_threshold
+
+    def save(self, *args, **kwargs):
+        self.in_stock = self.stock_quantity > 0
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.name
@@ -96,6 +108,120 @@ class ProductRating(models.Model):
     def __str__(self):
         return f"Rating {self.rating} for {self.product_id} by {self.user_id}"
 
+
+class VendorPublishingCreditCoupon(models.Model):
+    CREDIT_TYPE_CHOICES = [
+        ('PRODUCT', 'Product credits'),
+        ('SERVICE', 'Service credits'),
+        ('BOTH', 'Product and service credits'),
+    ]
+
+    code = models.CharField(max_length=50, unique=True, db_index=True)
+    credit_type = models.CharField(max_length=20, choices=CREDIT_TYPE_CHOICES, default='BOTH')
+    product_credits = models.PositiveIntegerField(default=0)
+    service_credits = models.PositiveIntegerField(default=0)
+    max_redemptions = models.PositiveIntegerField(default=1)
+    expires_at = models.DateTimeField(blank=True, null=True)
+    is_active = models.BooleanField(default=True)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_publishing_credit_coupons')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    @property
+    def times_redeemed(self):
+        return self.redemptions.count()
+
+    @property
+    def expired(self):
+        return self.expires_at is not None and self.expires_at <= timezone.now()
+
+    @property
+    def redeemable(self):
+        return self.is_active and not self.expired and self.times_redeemed < self.max_redemptions
+
+    def save(self, *args, **kwargs):
+        self.code = (self.code or '').strip().upper()
+        if self.credit_type == 'PRODUCT':
+            self.service_credits = 0
+        elif self.credit_type == 'SERVICE':
+            self.product_credits = 0
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.code
+
+
+class VendorPublishingCreditRedemption(models.Model):
+    vendor = models.ForeignKey(Vendor, on_delete=models.CASCADE, related_name='publishing_credit_redemptions')
+    coupon = models.ForeignKey(VendorPublishingCreditCoupon, on_delete=models.PROTECT, related_name='redemptions')
+    product_credits = models.PositiveIntegerField(default=0)
+    service_credits = models.PositiveIntegerField(default=0)
+    redeemed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['vendor', 'coupon'], name='unique_vendor_publishing_coupon_redemption'),
+        ]
+
+    @classmethod
+    def available_product_credits_for(cls, vendor):
+        return cls.objects.filter(vendor=vendor).aggregate(total=Sum('product_credits')).get('total') or 0
+
+    @classmethod
+    def available_service_credits_for(cls, vendor):
+        return cls.objects.filter(vendor=vendor).aggregate(total=Sum('service_credits')).get('total') or 0
+
+    def __str__(self):
+        return f"{self.vendor_id} redeemed {self.coupon.code}"
+
+
+class VendorCustomerCoupon(models.Model):
+    DISCOUNT_TYPE_CHOICES = [
+        ('PERCENTAGE', 'Percentage'),
+        ('FIXED', 'Fixed amount'),
+    ]
+
+    code = models.CharField(max_length=50, db_index=True)
+    vendor = models.ForeignKey(Vendor, on_delete=models.CASCADE, related_name='customer_coupons')
+    discount_type = models.CharField(max_length=20, choices=DISCOUNT_TYPE_CHOICES, default='PERCENTAGE')
+    discount_value = models.DecimalField(max_digits=10, decimal_places=2)
+    minimum_order_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    max_redemptions = models.PositiveIntegerField(default=1)
+    per_customer_limit = models.PositiveIntegerField(default=1)
+    expires_at = models.DateTimeField(blank=True, null=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['vendor', 'code'], name='unique_customer_coupon_code_per_vendor'),
+        ]
+
+    @property
+    def times_redeemed(self):
+        return self.redemptions.count()
+
+    @property
+    def expired(self):
+        return self.expires_at is not None and self.expires_at <= timezone.now()
+
+    @property
+    def redeemable(self):
+        return self.is_active and not self.expired and self.times_redeemed < self.max_redemptions
+
+    @property
+    def vendor_name(self):
+        return self.vendor.vendor_name if self.vendor else ""
+
+    def save(self, *args, **kwargs):
+        self.code = (self.code or '').strip().upper()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.code} - {self.vendor_name}"
+
+
 class OrderItem(models.Model):
     """
     Model representing an item in an order.
@@ -131,6 +257,9 @@ class Order(models.Model):
     other_location = models.CharField(max_length=255, blank=True, null=True) # used if location is 'Other'
     delivery_fee_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     service_fee_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    discount_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    coupon_code = models.CharField(max_length=50, blank=True, null=True)
+    applied_coupon = models.ForeignKey(VendorCustomerCoupon, on_delete=models.SET_NULL, null=True, blank=True, related_name='orders')
     customer_phone = models.CharField(max_length=15, blank=True, null=True)
     status = models.CharField(max_length=50, choices=[('Pending', 'Pending'), ('Completed', 'Completed'), ('Cancelled', 'Cancelled')], default='Pending')
     created_at = models.DateTimeField(auto_now_add=True)
@@ -162,7 +291,10 @@ class Order(models.Model):
                 items_total += item.price
             except Exception:
                 items_total += 0
-        return items_total + (self.delivery_fee_amount or 0) + (self.service_fee_amount or 0)
+        discounted_items_total = items_total - (self.discount_amount or 0)
+        if discounted_items_total < 0:
+            discounted_items_total = 0
+        return discounted_items_total + (self.delivery_fee_amount or 0) + (self.service_fee_amount or 0)
     
     @property
     def vendor_id(self) -> str:
@@ -205,6 +337,17 @@ class Order(models.Model):
 
     def __str__(self):
         return f"Order {self.id} for {self.user.name}"    
+
+
+class VendorCustomerCouponRedemption(models.Model):
+    coupon = models.ForeignKey(VendorCustomerCoupon, on_delete=models.PROTECT, related_name='redemptions')
+    order = models.OneToOneField(Order, on_delete=models.CASCADE, related_name='coupon_redemption')
+    customer = models.ForeignKey(User, on_delete=models.CASCADE, related_name='customer_coupon_redemptions')
+    discount_amount = models.DecimalField(max_digits=10, decimal_places=2)
+    redeemed_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.customer_id} redeemed {self.coupon.code} on order {self.order_id}"
     
 
 class Service(models.Model):
