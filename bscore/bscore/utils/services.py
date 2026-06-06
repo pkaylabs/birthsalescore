@@ -318,6 +318,14 @@ def create_payouts_for_order_payment(payment: Payment):
         vendor_totals[vendor.id] += decimal.Decimal(item.price)
         vendor_items.setdefault(vendor.id, []).append(item)
 
+    if getattr(order, 'applied_coupon_id', None) and getattr(order, 'discount_amount', None):
+        coupon_vendor_id = getattr(order.applied_coupon, 'vendor_id', None)
+        if coupon_vendor_id in vendor_totals:
+            vendor_totals[coupon_vendor_id] = max(
+                decimal.Decimal('0'),
+                vendor_totals[coupon_vendor_id] - decimal.Decimal(order.discount_amount),
+            )
+
     for vendor_id, total in vendor_totals.items():
         vendor = Vendor.objects.filter(id=vendor_id).first()
         if not vendor:
