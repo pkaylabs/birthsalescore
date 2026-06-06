@@ -136,9 +136,10 @@ class Vendor(models.Model):
         if not subscription or subscription.expired or not subscription.package.can_create_product:
             return False
 
-        from apis.models import Product
+        from apis.models import Product, VendorPublishingCreditRedemption
         current_products = Product.objects.filter(vendor=self, is_deleted=False).count()
-        return current_products < subscription.package.max_products
+        credits = VendorPublishingCreditRedemption.available_product_credits_for(self)
+        return current_products < (subscription.package.max_products + credits)
     
     def can_create_or_view_service(self) -> bool:
         '''Check if the vendor can create a service'''
@@ -153,9 +154,10 @@ class Vendor(models.Model):
         if not subscription or subscription.expired or not subscription.package.can_create_service:
             return False
 
-        from apis.models import Service
+        from apis.models import Service, VendorPublishingCreditRedemption
         current_services = Service.objects.filter(vendor=self).count()
-        return current_services < subscription.package.max_services
+        credits = VendorPublishingCreditRedemption.available_service_credits_for(self)
+        return current_services < (subscription.package.max_services + credits)
     
     def has_active_subscription(self) -> bool:
         '''Check if the vendor has an active subscription'''
