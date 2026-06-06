@@ -11,3 +11,4 @@ from .banner import *
 from .video_ads import *
 from .delivery import *
 from .service_fees import *
+from .coupons import *
